@@ -1,0 +1,236 @@
+name: 'Distribute dk modules'
+description: 'Distribute your dk modules in your GitHub Action workflow'
+branding:
+  icon: cloud-lightning
+  color: 'gray-dark'
+inputs:
+  dk-version:
+    description: 'The version of the dk build system to use. The default is the latest version.'
+    required: false
+    default: '2.4'
+  id:
+    description: 'The library and version of your distribution. Ex. CommonsBase_Std@1.0.1'
+    required: false # true does nothing
+  pubkey:
+    description: 'Your public key for the distribution version.'
+    required: false # Give nice error message if empty in `steps`
+  seckey:
+    description: 'Your secret key for the distribution version.'
+    required: false # Give nice error message if empty in `steps`
+  slots:
+    description: 'The list of slots to build, separated by newlines or commas. Default: Debug.Agnostic, Release.Agnostic'
+    required: false # true does nothing
+    default: 'Debug.Agnostic,Release.Agnostic'
+  forms:
+    description: 'The list of forms to build, separated by newlines or commas.'
+    required: false # true does nothing
+  use-cache:
+    description: 'Whether to cache value stores and trace stores between runs.'
+    required: false
+    default: 'false'
+  options:
+    description: 'Options to pass to `dk` and/or `mlfront-shell`. Default is `-I etc/dk/v`'
+    required: false
+    default: '-I etc/dk/v'
+  experimental-mlfront-ref:
+    description: 'Use the bleeding edge of dk/mlfront-shell. Do not use for production. Do not use unless told to do so by Diskuv Support.'
+    required: false
+    default: 'false'
+runs:
+  using: composite
+  steps:
+      - name: Check Runner OS
+        if: ${{ runner.os != 'Linux' && runner.os != 'Windows' && runner.os != 'macOS'}}
+        shell: bash
+        run: |
+          echo "::error title=⛔ error hint::Support Linux, Windows, and macOS Only"
+          exit 1
+
+      - name: Check Library Id and Version
+        if: ${{ inputs.id == '' }}
+        shell: bash
+        run: |
+          echo "::error title=⛔ error hint::Missing required input. You need to set the 'id' input in the `with:` block of the workflow step."
+          exit 1
+
+      - name: Check Slots
+        if: ${{ inputs.slots == '' }}
+        shell: bash
+        run: |
+          echo "::error title=⛔ error hint::Missing required input. You need to set the 'slots' input in the `with:` block of the workflow step."
+          exit 1
+
+      - name: Check Forms
+        if: ${{ inputs.forms == '' }}
+        shell: bash
+        run: |
+          echo "::error title=⛔ error hint::Missing required input. You need to set the 'forms' input in the `with:` block of the workflow step."
+          exit 1
+
+      - name: Set DK variables
+        id: dk-vars
+        shell: bash
+        run: |
+          case "${{ inputs.dk-version }}" in
+            2.4) DK_BUILD_VERSION_REF=V2_4; DK_BUILD_VERSION_MAJMIN=2.4 ;;
+            *) echo "::error title=⛔ error hint::Unsupported version '${{ inputs.dk-version }}'. Supported versions: 2.4"; exit 1 ;;
+          esac
+          echo "dk_build_version_ref=${DK_BUILD_VERSION_REF}" >> "$GITHUB_OUTPUT"
+          echo "dk_build_version_majmin=${DK_BUILD_VERSION_MAJMIN}" >> "$GITHUB_OUTPUT"
+
+          # split id into library_id and version
+          if [[ "${{ inputs.id }}" != *@* ]]; then
+            echo "::error title=⛔ error hint::Invalid id '${{ inputs.id }}'. Must be of the form SomeLibrary_Unit@Version, like CommonsBase_Std@1.0.1"
+            exit 1
+          fi          
+          DK_ID="${{ inputs.id }}"
+          DK_ID_LIBRARY="${DK_ID%@*}"
+          DK_ID_VERSION="${DK_ID#*@}"
+          if [[ -z "$DK_ID_LIBRARY" || -z "$DK_ID_VERSION" ]]; then
+            echo "::error title=⛔ error hint::Invalid id '${{ inputs.id }}'. Must be of the form SomeLibrary_Unit@Version, like CommonsBase_Std@1.0.1"
+            exit 1
+          fi
+          echo "dk_id_library=${DK_ID_LIBRARY}" >> "$GITHUB_OUTPUT"
+          echo "dk_id_version=${DK_ID_VERSION}" >> "$GITHUB_OUTPUT"
+
+          # convert version like 1.2.3 to underscore separated major and minor version like 1_2
+          DK_ID_VERSION_MAJMINUNDER=$(printf "%s" "${DK_ID_VERSION}" | awk -F. '{print $1"_"$2}')
+          echo "dk_id_version_majminunder=${DK_ID_VERSION_MAJMINUNDER}" >> "$GITHUB_OUTPUT"
+
+      - name: Check Key Pairs
+        if: ${{ inputs.pubkey == '' || inputs.seckey == '' }}
+        shell: bash
+        # Produce message like:
+        # > Distribution keypair missing. You need to populate 'distribute_2_4_pubkey' and 'distribute_2_4_seckey' in the Secrets for your workflow. See more in https://docs.github.com/en/actions/security-guides/encrypted-secrets. Then set the 'pubkey' and 'seckey' inputs in the 'with:' block of the workflow step, like: pubkey: ${{ secrets.distribute_2_4_pubkey }} seckey: ${{ secrets.distribute_2_4_seckey }}
+        run: |
+          echo "::error title=⛔ error hint::Distribution keypair missing. You need to populate 'distribute_${{ steps.dk-vars.outputs.dk_id_version_majminunder }}_pubkey' and 'distribute_${{ steps.dk-vars.outputs.dk_id_version_majminunder }}_seckey' in the Secrets for your workflow. See more in https://docs.github.com/en/actions/security-guides/encrypted-secrets. Then set the 'pubkey' and 'seckey' inputs in the 'with:' block of the workflow step, like the following on two lines: ${{ format('pubkey: {0}{1}{1} secrets.distribute_{3}_pubkey {2}{2} seckey: {0}{1}{1} secrets.distribute_{3}_seckey {2}{2}', '\$', '{', '}', steps.dk-vars.outputs.dk_id_version_majminunder) }}"
+          exit 1
+
+      # --------- C.1: Get dk0/mlfront-shell ----------
+
+      - name: Get dk0/mlfront-shell
+        if: ${{ inputs.experimental-mlfront-ref == '' }}
+        uses: actions/checkout@v5
+        with:
+          repository: diskuv/dk
+          path: dk0
+          ref: ${{ steps.dk-vars.outputs.dk_build_version_ref }}
+
+      # --------- C.2: Install dk0/mlfront-shell ----------
+      - name: Set-up OCaml
+        if: ${{ inputs.experimental-mlfront-ref != '' }}
+        uses: ocaml/setup-ocaml@57d9aa353e8d39677b1b9fc39637d48f27fe4a91 # v3
+        with:
+          ocaml-compiler: 5.4.0
+          #   default: Oct 10, 2025
+          opam-repositories: |
+            default: git+https://github.com/ocaml/opam-repository.git#1b2e16586ed7c93313eb8939a11c7c76934750f3
+          cache-prefix: dk-distribute-v1
+      - name: Get MlFront
+        if: ${{ inputs.experimental-mlfront-ref != '' }}
+        shell: bash
+        #   `git commit` required since `opam pin`` uses git+file://
+        run: |
+          install -d dk0
+          git clone https://gitlab.com/dkml/build-tools/MlFront.git
+          cd MlFront
+          git reset --hard '${{ inputs.experimental-mlfront-ref }}'
+
+          sh ci/localize-pristine.sh
+          git config user.email "nobody@example.com"
+          git config user.name "nobody"
+          git add --force dune-project *.opam
+          git commit -m "pristine"
+
+          printf 'opam version: '
+          opam --version
+      - name: Pin Latest MlFront
+        if: ${{ inputs.experimental-mlfront-ref != '' }}
+        shell: bash
+        run: cd MlFront && opam pin . --no-action -y
+      - name: Install MlFront_Exec
+        if: ${{ inputs.experimental-mlfront-ref != '' }}
+        shell: bash
+        run: cd MlFront && opam install MlFront_Exec -y
+      - name: Create dk0/mlfront-shell Wrapper
+        if: ${{ inputs.experimental-mlfront-ref != '' }}
+        shell: bash
+        run: |
+          printf '#!/bin/sh\nset -euf\nopam exec -- mlfront-shell "$@"\n' | tee dk0/mlfront-shell
+          chmod +x dk0/mlfront-shell
+
+      # --------- E.1 Cache Restore ----------
+      - name: Cache restore dk stores
+        if: ${{ inputs.use-cache != '' }}
+        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        id: restore-cache-dk-distribute
+        with:
+            # The data stores (and build keys) are safe to share between Windows, macOS and Linux
+            enableCrossOsArchive: true
+            #   SYNC: must match Cache Save below
+            path: target/dk
+            #   SYNC: must match Cache Save below
+            key: dk-stores-and-keys-${{ steps.dk-vars.outputs.dk_build_version_majmin }}-${{ github.run_id }} # update cache on every run
+            restore-keys: dk-stores-and-keys-${{ steps.dk-vars.outputs.dk_build_version_majmin }}             # use latest cache for this version
+
+
+      # --------- G.1 Distribute ----------
+
+      - name: Distribute
+        env:
+            DK_BUILD_PUBKEY: "${{ inputs.pubkey }}"
+            DK_BUILD_SECKEY: "${{ inputs.seckey }}"
+            # Cross-platform CI caches behave best when the cached data is under the project directory
+            XDG_CONFIG_HOME: ${{ github.workspace }}/target/dk/config
+            XDG_DATA_HOME: ${{ github.workspace }}/target/dk/data
+        shell: bash
+        run: |
+          echo distribute and combine ...
+          shopt -s extglob # leading and trailing space trim
+          # note: IFS+read works on macOS bash 5.2, unlike readarray
+
+          # 'SLOTS_ARRAY' is a bash array from the comma-separated or newline-separated input 'slots'
+          set +e
+          IFS=$'\n,' read -r -d '' -a SLOTS_ARRAY <<< "${{ inputs.slots }}"
+          set -e
+          # spaces trimmed
+          TRIMMED_SLOTS=()
+          for i in "${!SLOTS_ARRAY[@]}"; do
+            str="${SLOTS_ARRAY[$i]}"
+            str="${str##*( )}" # leading
+            str="${str%%*( )}" # trailing
+            TRIMMED_SLOTS+=("$str")
+          done
+
+          # Ditto for 'FORMS_ARRAY'
+          set +e
+          IFS=$'\n,' read -r -d '' -a FORMS_ARRAY <<< "${{ inputs.forms }}"
+          set -e
+          TRIMMED_FORMS=()
+          for i in "${!FORMS_ARRAY[@]}"; do
+            str="${FORMS_ARRAY[$i]}"
+            str="${str##*( )}" # leading
+            str="${str%%*( )}" # trailing
+            TRIMMED_FORMS+=("$str")
+          done
+
+          for slot in "${TRIMMED_SLOTS[@]}"; do
+            echo "Building slot $slot: dk0/mlfront-shell ${{ inputs.options }} --keys-env DK_BUILD --verbose -- distribute -s "$slot" --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${TRIMMED_FORMS[*]}"
+            dk0/mlfront-shell ${{ inputs.options }} --keys-env DK_BUILD --verbose -- distribute -s "$slot" --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' "${TRIMMED_FORMS[@]}"
+          done
+
+          echo "Combining: dk0/mlfront-shell ${{ inputs.options }} --verbose -- combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
+          dk0/mlfront-shell ${{ inputs.options }} --verbose -- combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
+
+      # --------- X.1 Cache Save ----------
+      - name: Cache save dk stores
+        if: ${{ inputs.use-cache != '' && steps.restore-cache-dk-distribute.outputs.cache-hit == '' }}
+        uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        id: save-cache-dk-distribute
+        with:
+            # The data stores (and build keys) are safe to share between Windows, macOS and Linux
+            enableCrossOsArchive: true
+            #   SYNC: must match Cache Load above
+            path: target/dk
+            #   SYNC: must match Cache Load above
+            key: dk-stores-and-keys-${{ steps.dk-vars.outputs.dk_build_version_majmin }}-${{ github.run_id }} # update cache on every run
