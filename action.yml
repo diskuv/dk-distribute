@@ -153,7 +153,8 @@ runs:
       - name: Install MlFront_Exec
         if: ${{ inputs.experimental-mlfront-ref != '' }}
         shell: bash
-        run: cd MlFront && opam install MlFront_Exec -y
+        # Use `./MlFront_Exec.opam` not `MlFront_Exec` to process pin-depends:[]
+        run: cd MlFront && opam install ./MlFront_Exec.opam -y
       - name: Create dksrc/dk0 Wrapper
         if: ${{ inputs.experimental-mlfront-ref != '' }}
         shell: bash
