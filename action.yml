@@ -29,11 +29,11 @@ inputs:
     required: false
     default: 'false'
   options:
-    description: 'Options to pass to `dk` and/or `mlfront-shell`. Default is `-I etc/dk/v`'
+    description: 'Options to pass to `dk` and/or `dk0`. Default is `-I etc/dk/v`'
     required: false
     default: '-I etc/dk/v'
   experimental-mlfront-ref:
-    description: 'Use the bleeding edge of dk/mlfront-shell. Do not use for production. Do not use unless told to do so by Diskuv Support.'
+    description: 'Use the bleeding edge of https://gitlab.com/dkml/build-tools/MlFront.git. Do not use for production.'
     required: false
     default: 'false'
 runs:
@@ -106,17 +106,17 @@ runs:
           echo "::error title=⛔ error hint::Distribution keypair missing. You need to populate 'distribute_${{ steps.dk-vars.outputs.dk_id_version_majminunder }}_pubkey' and 'distribute_${{ steps.dk-vars.outputs.dk_id_version_majminunder }}_seckey' in the Secrets for your workflow. See more in https://docs.github.com/en/actions/security-guides/encrypted-secrets. Then set the 'pubkey' and 'seckey' inputs in the 'with:' block of the workflow step, like the following on two lines: ${{ format('pubkey: {0}{1}{1} secrets.distribute_{3}_pubkey {2}{2} seckey: {0}{1}{1} secrets.distribute_{3}_seckey {2}{2}', '\$', '{', '}', steps.dk-vars.outputs.dk_id_version_majminunder) }}"
           exit 1
 
-      # --------- C.1: Get dk0/mlfront-shell ----------
+      # --------- C.1: Get dksrc/dk0 ----------
 
-      - name: Get dk0/mlfront-shell
+      - name: Get dksrc/dk0
         if: ${{ inputs.experimental-mlfront-ref == '' }}
         uses: actions/checkout@v5
         with:
           repository: diskuv/dk
-          path: dk0
+          path: dksrc
           ref: ${{ steps.dk-vars.outputs.dk_build_version_ref }}
 
-      # --------- C.2: Install dk0/mlfront-shell ----------
+      # --------- C.2: Install dksrc/dk0 ----------
       - name: Set-up OCaml
         if: ${{ inputs.experimental-mlfront-ref != '' }}
         uses: ocaml/setup-ocaml@57d9aa353e8d39677b1b9fc39637d48f27fe4a91 # v3
@@ -131,7 +131,7 @@ runs:
         shell: bash
         #   `git commit` required since `opam pin`` uses git+file://
         run: |
-          install -d dk0
+          install -d dksrc
           git clone https://gitlab.com/dkml/build-tools/MlFront.git
           cd MlFront
           git reset --hard '${{ inputs.experimental-mlfront-ref }}'
@@ -152,12 +152,12 @@ runs:
         if: ${{ inputs.experimental-mlfront-ref != '' }}
         shell: bash
         run: cd MlFront && opam install MlFront_Exec -y
-      - name: Create dk0/mlfront-shell Wrapper
+      - name: Create dksrc/dk0 Wrapper
         if: ${{ inputs.experimental-mlfront-ref != '' }}
         shell: bash
         run: |
-          printf '#!/bin/sh\nset -euf\nopam exec -- mlfront-shell "$@"\n' | tee dk0/mlfront-shell
-          chmod +x dk0/mlfront-shell
+          printf '#!/bin/sh\nset -euf\nopam exec -- dk0 "$@"\n' | tee dksrc/dk0
+          chmod +x dksrc/dk0
 
       # --------- E.1 Cache Restore ----------
       - name: Cache restore dk stores
@@ -215,12 +215,12 @@ runs:
           done
 
           for slot in "${TRIMMED_SLOTS[@]}"; do
-            echo "Building slot $slot: dk0/mlfront-shell ${{ inputs.options }} --keys-env DK_BUILD --verbose -- distribute -s "$slot" --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${TRIMMED_FORMS[*]}"
-            dk0/mlfront-shell ${{ inputs.options }} --keys-env DK_BUILD --verbose -- distribute -s "$slot" --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' "${TRIMMED_FORMS[@]}"
+            echo "Building slot $slot: dksrc/dk0 ${{ inputs.options }} --keys-env DK_BUILD --verbose -- distribute -s "$slot" --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${TRIMMED_FORMS[*]}"
+            dksrc/dk0 ${{ inputs.options }} --keys-env DK_BUILD --verbose -- distribute -s "$slot" --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' "${TRIMMED_FORMS[@]}"
           done
 
-          echo "Combining: dk0/mlfront-shell ${{ inputs.options }} --verbose -- combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
-          dk0/mlfront-shell ${{ inputs.options }} --verbose -- combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
+          echo "Combining: dksrc/dk0 ${{ inputs.options }} --verbose -- combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
+          dksrc/dk0 ${{ inputs.options }} --verbose -- combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
 
       # --------- X.1 Cache Save ----------
       - name: Cache save dk stores
