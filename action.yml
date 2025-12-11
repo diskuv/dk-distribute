@@ -122,9 +122,11 @@ runs:
         uses: ocaml/setup-ocaml@57d9aa353e8d39677b1b9fc39637d48f27fe4a91 # v3
         with:
           ocaml-compiler: 5.4.0
-          #   default: Oct 10, 2025
+          #   (synced from OCAML_OPAM_REPOSITORY in MlFront/.gitlab-ci.yml)
+          #   2025-11-08. dkml-c-probe.3.2.0
+          #   2025-10-10. initial
           opam-repositories: |
-            default: git+https://github.com/ocaml/opam-repository.git#1b2e16586ed7c93313eb8939a11c7c76934750f3
+            default: git+https://github.com/ocaml/opam-repository.git#88e773ad9e5a6ed02fb2c1fab59e649624ac9db4
           cache-prefix: dk-distribute-v1
       - name: Get MlFront
         if: ${{ inputs.experimental-mlfront-ref != '' }}
