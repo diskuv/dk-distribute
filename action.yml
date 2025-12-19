@@ -218,12 +218,12 @@ runs:
           done
 
           for slot in "${TRIMMED_SLOTS[@]}"; do
-            echo "Building slot $slot: dksrc/dk0 ${{ inputs.options }} --keys-env DK_BUILD --verbose -- distribute -s "$slot" --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${TRIMMED_FORMS[*]}"
-            dksrc/dk0 ${{ inputs.options }} --keys-env DK_BUILD --verbose -- distribute -s "$slot" --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' "${TRIMMED_FORMS[@]}"
+            echo "Building slot $slot: dksrc/dk0 --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute -s "$slot" --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${TRIMMED_FORMS[*]}"
+            dksrc/dk0 --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute -s "$slot" --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' "${TRIMMED_FORMS[@]}"
           done
 
-          echo "Combining: dksrc/dk0 ${{ inputs.options }} --verbose -- combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
-          dksrc/dk0 ${{ inputs.options }} --verbose -- combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
+          echo "Combining: dksrc/dk0 --trial ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
+          dksrc/dk0 --trial ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
 
       # --------- X.1 Cache Save ----------
       - name: Cache save dk stores
