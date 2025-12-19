@@ -171,7 +171,7 @@ runs:
             # The data stores (and build keys) are safe to share between Windows, macOS and Linux
             enableCrossOsArchive: true
             #   SYNC: must match Cache Save below
-            path: target/dk
+            path: t
             #   SYNC: must match Cache Save below
             key: dk-stores-and-keys-${{ steps.dk-vars.outputs.dk_build_version_majmin }}-${{ github.run_id }} # update cache on every run
             restore-keys: dk-stores-and-keys-${{ steps.dk-vars.outputs.dk_build_version_majmin }}             # use latest cache for this version
@@ -183,10 +183,8 @@ runs:
         env:
             DK_BUILD_PUBKEY: "${{ inputs.pubkey }}"
             DK_BUILD_SECKEY: "${{ inputs.seckey }}"
-            # Cross-platform CI caches behave best when the cached data is under the project directory
-            XDG_CONFIG_HOME: ${{ github.workspace }}/target/dk/config
-            XDG_DATA_HOME: ${{ github.workspace }}/target/dk/data
         shell: bash
+        # --trial option helps cross-platform CI caches since the cache+data is under the project t/ subdirectory
         run: |
           echo distribute and combine ...
           shopt -s extglob # leading and trailing space trim
@@ -234,6 +232,6 @@ runs:
             # The data stores (and build keys) are safe to share between Windows, macOS and Linux
             enableCrossOsArchive: true
             #   SYNC: must match Cache Load above
-            path: target/dk
+            path: t
             #   SYNC: must match Cache Load above
             key: dk-stores-and-keys-${{ steps.dk-vars.outputs.dk_build_version_majmin }}-${{ github.run_id }} # update cache on every run
