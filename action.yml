@@ -82,7 +82,7 @@ runs:
           if [[ "${{ inputs.id }}" != *@* ]]; then
             echo "::error title=⛔ error hint::Invalid id '${{ inputs.id }}'. Must be of the form SomeLibrary_Unit@Version, like CommonsBase_Std@1.0.1"
             exit 1
-          fi          
+          fi
           DK_ID="${{ inputs.id }}"
           DK_ID_LIBRARY="${DK_ID%@*}"
           DK_ID_VERSION="${DK_ID#*@}"
@@ -179,11 +179,12 @@ runs:
 
       # --------- G.1 Distribute ----------
 
-      - name: Distribute
+      - name: Distribute on Unix
         env:
             DK_BUILD_PUBKEY: "${{ inputs.pubkey }}"
             DK_BUILD_SECKEY: "${{ inputs.seckey }}"
         shell: bash
+        if: runner.os != 'Windows'
         # --trial option helps cross-platform CI caches since the cache+data is under the project t/ subdirectory
         run: |
           echo distribute and combine ...
@@ -222,6 +223,49 @@ runs:
 
           echo "Combining: dksrc/dk0 --trial ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
           dksrc/dk0 --trial ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
+
+      - name: Distribute on Windows
+        env:
+            DK_BUILD_PUBKEY: "${{ inputs.pubkey }}"
+            DK_BUILD_SECKEY: "${{ inputs.seckey }}"
+        shell: pwsh
+        if: runner.os == 'Windows'
+        run: |
+          Write-Host "distribute and combine ..."
+
+          # 'SLOTS_ARRAY' is a PowerShell array from the comma-separated or newline-separated input 'slots'
+          $SLOTS_ARRAY = "${{ inputs.slots }}" -split "[,`n]+"
+          $TRIMMED_SLOTS = @()
+          foreach ($slot in $SLOTS_ARRAY) {
+            $trimmed = $slot.Trim()
+            if ($trimmed -ne "") {
+              $TRIMMED_SLOTS += $trimmed
+            }
+          }
+
+          # Ditto for 'FORMS_ARRAY'
+          $FORMS_ARRAY = "${{ inputs.forms }}" -split "[,`n]+"
+          $TRIMMED_FORMS = @()
+          foreach ($form in $FORMS_ARRAY) {
+            $trimmed = $form.Trim()
+            if ($trimmed -ne "") {
+              $TRIMMED_FORMS += $trimmed
+            }
+          }
+
+          foreach ($slot in $TRIMMED_SLOTS) {
+            Write-Host "Building slot ${slot}: dksrc\dk0.exe --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute -s `"$slot`" --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' $($TRIMMED_FORMS -join ' ')"
+            dksrc\dk0.cmd --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute -s "$slot" --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' $TRIMMED_FORMS
+            if ($LASTEXITCODE -ne 0) {
+              throw "dk0 distribute failed with exit code $LASTEXITCODE"
+            }
+          }
+
+          Write-Host "Combining: dksrc\dk0.exe --trial ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
+          dksrc\dk0.cmd --trial ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
+          if ($LASTEXITCODE -ne 0) {
+            throw "dk0 combine failed with exit code $LASTEXITCODE"
+          }
 
       # --------- X.1 Cache Save ----------
       - name: Cache save dk stores
