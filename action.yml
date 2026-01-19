@@ -7,7 +7,7 @@ inputs:
   dk-version:
     description: 'The version of the dk build system to use. The default is the latest version.'
     required: false
-    default: '2.4'
+    default: '2.5'
   id:
     description: 'The library and version of your distribution. Ex. CommonsBase_Std@1.0.1'
     required: false # true does nothing
@@ -73,6 +73,7 @@ runs:
         run: |
           case "${{ inputs.dk-version }}" in
             2.4) DK_BUILD_VERSION_REF=V2_4; DK_BUILD_VERSION_MAJMIN=2.4 ;;
+            2.5) DK_BUILD_VERSION_REF=V2_5; DK_BUILD_VERSION_MAJMIN=2.5 ;;
             *) echo "::error title=⛔ error hint::Unsupported version '${{ inputs.dk-version }}'. Supported versions: 2.4"; exit 1 ;;
           esac
           echo "dk_build_version_ref=${DK_BUILD_VERSION_REF}" >> "$GITHUB_OUTPUT"
@@ -254,14 +255,14 @@ runs:
           }
 
           foreach ($slot in $TRIMMED_SLOTS) {
-            Write-Host "Building slot ${slot}: dksrc\dk0.exe --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute -s `"$slot`" --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' $($TRIMMED_FORMS -join ' ')"
+            Write-Host "Building slot ${slot}: dksrc\dk0.cmd --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute -s `"$slot`" --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' $($TRIMMED_FORMS -join ' ')"
             dksrc\dk0.cmd --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute -s "$slot" --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' $TRIMMED_FORMS
             if ($LASTEXITCODE -ne 0) {
               throw "dk0 distribute failed with exit code $LASTEXITCODE"
             }
           }
 
-          Write-Host "Combining: dksrc\dk0.exe --trial ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
+          Write-Host "Combining: dksrc\dk0.cmd --trial ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
           dksrc\dk0.cmd --trial ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
           if ($LASTEXITCODE -ne 0) {
             throw "dk0 combine failed with exit code $LASTEXITCODE"
