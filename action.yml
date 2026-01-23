@@ -17,15 +17,11 @@ inputs:
   seckey:
     description: 'Your secret key for the distribution version.'
     required: false # Give nice error message if empty in `steps`
-  slots:
-    description: 'The list of slots to build, separated by newlines or commas. Default: Debug.Agnostic, Release.Agnostic'
+  objects:
+    description: 'The objects to build, separated by newlines or commas. Each object is SLOT:MODULE@VERSION. Example: Release.Agnostic:SomeTest_Std.Form@1.0.0'
     required: false # true does nothing
-    default: 'Debug.Agnostic,Release.Agnostic'
-  forms:
-    description: 'The list of forms to build, separated by newlines or commas.'
-    required: false # true does nothing
-  rules:
-    description: 'The list of rules to build, separated by newlines or commas.'
+  scripts:
+    description: 'The script modules to build, separated by newlines or commas. Each script module is MODULE@VERSION. Example: SomeTest_Std.Rules@1.0.0'
     required: false # true does nothing
   use-cache:
     description: 'Whether to cache value stores and trace stores between runs.'
@@ -202,41 +198,37 @@ runs:
           shopt -s extglob # leading and trailing space trim
           # note: IFS+read works on macOS bash 5.2, unlike readarray
 
-          # 'SLOTS_ARRAY' is a bash array from the comma-separated or newline-separated input 'slots'
+          # 'OBJECTS_ARRAY' and 'SCRIPTS_ARRAY':
+          # bash array from the comma-separated or newline-separated input 'objects' and 'scripts'
           set +e
-          IFS=$'\n,' read -r -d '' -a SLOTS_ARRAY <<< "${{ inputs.slots }}"
+          IFS=$'\n,' read -r -d '' -a OBJECTS_ARRAY <<< "${{ inputs.objects }}"
+          IFS=$'\n,' read -r -d '' -a SCRIPTS_ARRAY <<< "${{ inputs.scripts }}"
           set -e
-          # spaces trimmed
-          TRIMMED_SLOTS=()
-          for i in "${!SLOTS_ARRAY[@]}"; do
-            str="${SLOTS_ARRAY[$i]}"
+          TRIMMED_OBJECTS=()
+          for i in "${!OBJECTS_ARRAY[@]}"; do
+            str="${OBJECTS_ARRAY[$i]}"
             str="${str##*( )}" # leading
             str="${str%%*( )}" # trailing
-            TRIMMED_SLOTS+=("$str")
+            TRIMMED_OBJECTS+=("$str")
+          done
+          TRIMMED_SCRIPTS=()
+          for i in "${!SCRIPTS_ARRAY[@]}"; do
+            str="${SCRIPTS_ARRAY[$i]}"
+            str="${str##*( )}" # leading
+            str="${str%%*( )}" # trailing
+            TRIMMED_SCRIPTS+=("$str")
           done
 
-          # Ditto for 'FORMS_ARRAY' and 'RULES_ARRAY'
-          set +e
-          IFS=$'\n,' read -r -d '' -a FORMS_ARRAY <<< "${{ inputs.forms }}"
-          IFS=$'\n,' read -r -d '' -a RULES_ARRAY <<< "${{ inputs.rules }}"
-          set -e
-          TRIMMED_MODULES=()
-          for i in "${!FORMS_ARRAY[@]}"; do
-            str="${FORMS_ARRAY[$i]}"
-            str="${str##*( )}" # leading
-            str="${str%%*( )}" # trailing
-            TRIMMED_MODULES+=(-o "$str")
+          part=1
+          for object in "${TRIMMED_OBJECTS[@]}"; do
+            echo "Building object $object: dksrc/dk0 --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute part$part --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -o $object"
+            dksrc/dk0 --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute part$part --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -o "$object"
+            part=$((part + 1))
           done
-          for i in "${!RULES_ARRAY[@]}"; do
-            str="${RULES_ARRAY[$i]}"
-            str="${str##*( )}" # leading
-            str="${str%%*( )}" # trailing
-            TRIMMED_MODULES+=(-r "$str")
-          done
-
-          for slot in "${TRIMMED_SLOTS[@]}"; do
-            echo "Building slot $slot: dksrc/dk0 --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -s "$slot" ${TRIMMED_MODULES[*]}"
-            dksrc/dk0 --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -s "$slot" "${TRIMMED_MODULES[@]}"
+          for script in "${TRIMMED_SCRIPTS[@]}"; do
+            echo "Building script module $script: dksrc/dk0 --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute part$part --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -s $script"
+            dksrc/dk0 --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute part$part --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -s "$script"
+            part=$((part + 1))
           done
 
           echo "Combining: dksrc/dk0 --trial ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
@@ -261,31 +253,41 @@ runs:
             }
           }
 
-          # Ditto for 'FORMS_ARRAY' and 'RULES_ARRAY'
-          $FORMS_ARRAY = "${{ inputs.forms }}" -split "[,`n]+"
-          $RULES_ARRAY = "${{ inputs.rules }}" -split "[,`n]+"
-          $TRIMMED_MODULES = @()
-          foreach ($form in $FORMS_ARRAY) {
+          # 'OBJECTS_ARRAY' and 'SCRIPTS_ARRAY':
+          # PowerShell array from the comma-separated or newline-separated input 'objects' and 'scripts'
+          $OBJECTS_ARRAY = "${{ inputs.objects }}" -split "[,`n]+"
+          $SCRIPTS_ARRAY = "${{ inputs.scripts }}" -split "[,`n]+"
+          $TRIMMED_OBJECTS = @()
+          foreach ($form in $OBJECTS_ARRAY) {
             $trimmed = $form.Trim()
             if ($trimmed -ne "") {
-              $TRIMMED_MODULES += "-o"
-              $TRIMMED_MODULES += $trimmed
+              $TRIMMED_OBJECTS += $trimmed
             }
           }
-          foreach ($rule in $RULES_ARRAY) {
+          $TRIMMED_SCRIPTS = @()
+          foreach ($rule in $SCRIPTS_ARRAY) {
             $trimmed = $rule.Trim()
             if ($trimmed -ne "") {
-              $TRIMMED_MODULES += "-r"
-              $TRIMMED_MODULES += $trimmed
+              $TRIMMED_SCRIPTS += $trimmed
             }
           }
 
-          foreach ($slot in $TRIMMED_SLOTS) {
-            Write-Host "Building slot ${slot}: dksrc\dk0.cmd --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -s `"$slot`" $($TRIMMED_MODULES -join ' ')"
-            dksrc\dk0.cmd --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -s "$slot" $TRIMMED_MODULES
+          $part = 1
+          foreach ($object in $TRIMMED_OBJECTS) {
+            Write-Host "Building object ${object}: dksrc\dk0.cmd --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute part$part --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -o $object"
+            dksrc\dk0.cmd --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute part$part --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -o $object
             if ($LASTEXITCODE -ne 0) {
               throw "dk0 distribute failed with exit code $LASTEXITCODE"
             }
+            $part++
+          }
+          foreach ($script in $TRIMMED_SCRIPTS) {
+            Write-Host "Building script module ${script}: dksrc\dk0.cmd --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute part$part --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -s $script"
+            dksrc\dk0.cmd --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute part$part --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -s $script
+            if ($LASTEXITCODE -ne 0) {
+              throw "dk0 distribute failed with exit code $LASTEXITCODE"
+            }
+            $part++
           }
 
           Write-Host "Combining: dksrc\dk0.cmd --trial ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
