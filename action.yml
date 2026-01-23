@@ -74,7 +74,7 @@ runs:
           case "${{ inputs.dk-version }}" in
             2.4) DK_BUILD_VERSION_REF=V2_4; DK_BUILD_VERSION_MAJMIN=2.4 ;;
             2.5) DK_BUILD_VERSION_REF=V2_5; DK_BUILD_VERSION_MAJMIN=2.5 ;;
-            *) echo "::error title=⛔ error hint::Unsupported version '${{ inputs.dk-version }}'. Supported versions: 2.4"; exit 1 ;;
+            *) echo "::error title=⛔ error hint::Unsupported version '${{ inputs.dk-version }}'. Supported versions: 2.4, 2.5"; exit 1 ;;
           esac
           echo "dk_build_version_ref=${DK_BUILD_VERSION_REF}" >> "$GITHUB_OUTPUT"
           echo "dk_build_version_majmin=${DK_BUILD_VERSION_MAJMIN}" >> "$GITHUB_OUTPUT"
@@ -212,21 +212,28 @@ runs:
             TRIMMED_SLOTS+=("$str")
           done
 
-          # Ditto for 'FORMS_ARRAY'
+          # Ditto for 'FORMS_ARRAY' and 'RULES_ARRAY'
           set +e
           IFS=$'\n,' read -r -d '' -a FORMS_ARRAY <<< "${{ inputs.forms }}"
+          IFS=$'\n,' read -r -d '' -a RULES_ARRAY <<< "${{ inputs.rules }}"
           set -e
-          TRIMMED_FORMS=()
+          TRIMMED_MODULES=()
           for i in "${!FORMS_ARRAY[@]}"; do
             str="${FORMS_ARRAY[$i]}"
             str="${str##*( )}" # leading
             str="${str%%*( )}" # trailing
-            TRIMMED_FORMS+=("$str")
+            TRIMMED_MODULES+=(-o "$str")
+          done
+          for i in "${!RULES_ARRAY[@]}"; do
+            str="${RULES_ARRAY[$i]}"
+            str="${str##*( )}" # leading
+            str="${str%%*( )}" # trailing
+            TRIMMED_MODULES+=(-r "$str")
           done
 
           for slot in "${TRIMMED_SLOTS[@]}"; do
-            echo "Building slot $slot: dksrc/dk0 --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute -s "$slot" --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${TRIMMED_FORMS[*]}"
-            dksrc/dk0 --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute -s "$slot" --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' "${TRIMMED_FORMS[@]}"
+            echo "Building slot $slot: dksrc/dk0 --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -s "$slot" ${TRIMMED_MODULES[*]}"
+            dksrc/dk0 --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -s "$slot" "${TRIMMED_MODULES[@]}"
           done
 
           echo "Combining: dksrc/dk0 --trial ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
@@ -251,19 +258,28 @@ runs:
             }
           }
 
-          # Ditto for 'FORMS_ARRAY'
+          # Ditto for 'FORMS_ARRAY' and 'RULES_ARRAY'
           $FORMS_ARRAY = "${{ inputs.forms }}" -split "[,`n]+"
-          $TRIMMED_FORMS = @()
+          $RULES_ARRAY = "${{ inputs.rules }}" -split "[,`n]+"
+          $TRIMMED_MODULES = @()
           foreach ($form in $FORMS_ARRAY) {
             $trimmed = $form.Trim()
             if ($trimmed -ne "") {
-              $TRIMMED_FORMS += $trimmed
+              $TRIMMED_MODULES += "-o"
+              $TRIMMED_MODULES += $trimmed
+            }
+          }
+          foreach ($rule in $RULES_ARRAY) {
+            $trimmed = $rule.Trim()
+            if ($trimmed -ne "") {
+              $TRIMMED_MODULES += "-r"
+              $TRIMMED_MODULES += $trimmed
             }
           }
 
           foreach ($slot in $TRIMMED_SLOTS) {
-            Write-Host "Building slot ${slot}: dksrc\dk0.cmd --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute -s `"$slot`" --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' $($TRIMMED_FORMS -join ' ')"
-            dksrc\dk0.cmd --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute -s "$slot" --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' $TRIMMED_FORMS
+            Write-Host "Building slot ${slot}: dksrc\dk0.cmd --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -s `"$slot`" $($TRIMMED_MODULES -join ' ')"
+            dksrc\dk0.cmd --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -s "$slot" $TRIMMED_MODULES
             if ($LASTEXITCODE -ne 0) {
               throw "dk0 distribute failed with exit code $LASTEXITCODE"
             }

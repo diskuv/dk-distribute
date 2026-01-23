@@ -18,6 +18,9 @@ by following the [Preparation](#preparation) and adding a step to your workflow:
         YourLibrary_Std.Abc@1.2.3
         YourLibrary_Std.Def@4.5.6
         YourLibrary_Std.Ghi.Jkl@7.8.9
+    rules: |
+        YourLibrary_Std.Rule1@10.11.12
+        YourLibrary_Std.Rule2@13.14.15
 ```
 
 All combinations of slots and forms will be built.
