@@ -52,18 +52,11 @@ runs:
           echo "::error title=⛔ error hint::Missing required input. You need to set the 'id' input in the `with:` block of the workflow step."
           exit 1
 
-      - name: Check Slots
-        if: inputs.slots == ''
+      - name: Check Objects and Scripts
+        if: inputs.objects == '' && inputs.scripts == ''
         shell: bash
         run: |
-          echo "::error title=⛔ error hint::Missing required input. You need to set the 'slots' input in the `with:` block of the workflow step."
-          exit 1
-
-      - name: Check Forms
-        if: inputs.forms == ''
-        shell: bash
-        run: |
-          echo "::error title=⛔ error hint::Missing required input. You need to set the 'forms' input in the `with:` block of the workflow step."
+          echo "::error title=⛔ error hint::Missing required input. You need to set the 'objects' or 'scripts' input or both in the `with:` block of the workflow step."
           exit 1
 
       - name: Set DK variables
@@ -242,16 +235,6 @@ runs:
         if: runner.os == 'Windows'
         run: |
           Write-Host "distribute and combine ..."
-
-          # 'SLOTS_ARRAY' is a PowerShell array from the comma-separated or newline-separated input 'slots'
-          $SLOTS_ARRAY = "${{ inputs.slots }}" -split "[,`n]+"
-          $TRIMMED_SLOTS = @()
-          foreach ($slot in $SLOTS_ARRAY) {
-            $trimmed = $slot.Trim()
-            if ($trimmed -ne "") {
-              $TRIMMED_SLOTS += $trimmed
-            }
-          }
 
           # 'OBJECTS_ARRAY' and 'SCRIPTS_ARRAY':
           # PowerShell array from the comma-separated or newline-separated input 'objects' and 'scripts'

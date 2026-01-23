@@ -11,16 +11,17 @@ by following the [Preparation](#preparation) and adding a step to your workflow:
     id: YourLibrary_Std@${{ github.ref_name }} # change!
     pubkey: ${{ secrets.distribute_1_0_pubkey }} # change based on `version`
     seckey: ${{ secrets.distribute_1_0_seckey }} # change based on `version`
-    slots: |
-        Debug.Agnostic
-        Release.Agnostic
-    forms: |
-        YourLibrary_Std.Abc@1.2.3
-        YourLibrary_Std.Def@4.5.6
-        YourLibrary_Std.Ghi.Jkl@7.8.9
-    rules: |
-        YourLibrary_Std.Rule1@10.11.12
-        YourLibrary_Std.Rule2@13.14.15
+    objects: |
+        Release.Agnostic:YourLibrary_Std.Abc@1.2.3
+        Release.Agnostic:YourLibrary_Std.Def@4.5.6
+        Release.Agnostic:YourLibrary_Std.Ghi.Jkl@7.8.9
+
+        Debug.Agnostic:YourLibrary_Std.Abc@1.2.3
+        Debug.Agnostic:YourLibrary_Std.Def@4.5.6
+        Debug.Agnostic:YourLibrary_Std.Ghi.Jkl@7.8.9
+    scripts: |
+        YourLibrary_Std.Script1@10.11.12
+        YourLibrary_Std.Script2@13.14.15
 ```
 
 All combinations of slots and forms will be built.
