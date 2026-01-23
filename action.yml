@@ -24,6 +24,9 @@ inputs:
   forms:
     description: 'The list of forms to build, separated by newlines or commas.'
     required: false # true does nothing
+  rules:
+    description: 'The list of rules to build, separated by newlines or commas.'
+    required: false # true does nothing
   use-cache:
     description: 'Whether to cache value stores and trace stores between runs.'
     required: false
