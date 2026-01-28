@@ -229,6 +229,16 @@ runs:
           echo "Combining: dksrc/dk0 --trial ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
           dksrc/dk0 --trial ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
 
+      - name: Query traces on Unix
+        env:
+            DK_BUILD_PUBKEY: "${{ inputs.pubkey }}"
+            DK_BUILD_SECKEY: "${{ inputs.seckey }}"
+        shell: bash
+        if: runner.os != 'Windows'
+        continue-on-error: true
+        run: |
+          dksrc/dk0 --trial ${{ inputs.options }} --keys-env DK_BUILD query
+
       - name: Distribute on Windows
         env:
             DK_BUILD_PUBKEY: "${{ inputs.pubkey }}"
@@ -286,6 +296,16 @@ runs:
           if ($LASTEXITCODE -ne 0) {
             throw "dk0 combine failed with exit code $LASTEXITCODE"
           }
+
+      - name: Query traces on Windows
+        env:
+            DK_BUILD_PUBKEY: "${{ inputs.pubkey }}"
+            DK_BUILD_SECKEY: "${{ inputs.seckey }}"
+        shell: pwsh
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        run: |
+          dksrc\dk0.cmd --trial ${{ inputs.options }} --keys-env DK_BUILD query
 
       # --------- X.1 Cache Save ----------
       - name: Cache save dk stores
