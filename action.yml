@@ -233,9 +233,9 @@ runs:
         env:
             DK_BUILD_PUBKEY: "${{ inputs.pubkey }}"
             DK_BUILD_SECKEY: "${{ inputs.seckey }}"
+            OCAMLRUNPARAM: b
         shell: bash
         if: runner.os != 'Windows'
-        continue-on-error: true
         run: |
           dksrc/dk0 --trial ${{ inputs.options }} --keys-env DK_BUILD query
 
@@ -301,11 +301,14 @@ runs:
         env:
             DK_BUILD_PUBKEY: "${{ inputs.pubkey }}"
             DK_BUILD_SECKEY: "${{ inputs.seckey }}"
+            OCAMLRUNPARAM: b
         shell: pwsh
         if: runner.os == 'Windows'
-        continue-on-error: true
         run: |
           dksrc\dk0.cmd --trial ${{ inputs.options }} --keys-env DK_BUILD query
+          if ($LASTEXITCODE -ne 0) {
+            throw "dk0 query failed with exit code $LASTEXITCODE"
+          }
 
       # --------- X.1 Cache Save ----------
       - name: Cache save dk stores
