@@ -1,3 +1,13 @@
+# MAINTENANCE NOTES
+# -----------------
+#
+# * Any backwards incompatible inputs require a major version change.
+# * Ordinarily for the same major+minor `dk-version` that cache should be compatible across patch versions.
+#   But if a dk0 patch release accidentally corrupts a cache, search/replace and bump "-x1" to evict
+#   _every_ user cache AND put a note in the release notes AND put a
+#   "⚠️ warning: cache evicted administratively" as a GitHub step for at least a week. You might make
+#   that easier for users by using a `if:` on the cache to use a bump (ex. "-x1" -> "-x2") only for
+#   the affected major+minor `dk-version`
 name: 'Distribute dk modules'
 description: 'Distribute your dk modules in your GitHub Action workflow'
 branding:
@@ -185,7 +195,6 @@ runs:
         with:
             # The data stores (and build keys) are safe to share between Windows, macOS and Linux
             enableCrossOsArchive: true
-            # note: Search/replace and bump x1 to evict _every_ user cache.
             #   SYNC: must match Cache Save below
             path: t
             #   SYNC: must match Cache Save below.
