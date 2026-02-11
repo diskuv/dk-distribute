@@ -9,7 +9,7 @@ inputs:
     required: false
     default: '2.5'
   id:
-    description: 'The library and version of your distribution. Ex. CommonsBase_Std@1.0.1. Any semver build metadata (a "+" and [0-9A-Za-z-] characters) is stripped.'
+    description: 'The library and version of your distribution. Ex. CommonsBase_Std@1.0.1. The version must be valid semver. Any semver build metadata (a "+" and [0-9A-Za-z-] characters) is stripped.'
     required: false # true does nothing
   pubkey:
     description: 'Your public key for the distribution version.'
@@ -71,23 +71,33 @@ runs:
           echo "dk_build_version_ref=${DK_BUILD_VERSION_REF}" >> "$GITHUB_OUTPUT"
           echo "dk_build_version_majmin=${DK_BUILD_VERSION_MAJMIN}" >> "$GITHUB_OUTPUT"
 
-          # strip build metadata from id
-          DK_ID="${{ inputs.id }}"
-          if [[ "$DK_ID" == *"+"* ]]; then
-            DK_ID="${DK_ID%%+*}"
-          fi
-
           # split id into library_id and version
-          if [[ "$DK_ID" != *@* ]]; then
+          if [[ "$${{ inputs.id }}" != *@* ]]; then
             echo "::error title=⛔ error hint::Invalid id '${{ inputs.id }}'. Must be of the form SomeLibrary_Unit@Version, like CommonsBase_Std@1.0.1"
             exit 1
           fi
+          DK_ID="${{ inputs.id }}"
           DK_ID_LIBRARY="${DK_ID%@*}"
           DK_ID_VERSION="${DK_ID#*@}"
           if [[ -z "$DK_ID_LIBRARY" || -z "$DK_ID_VERSION" ]]; then
             echo "::error title=⛔ error hint::Invalid id '${{ inputs.id }}'. Must be of the form SomeLibrary_Unit@Version, like CommonsBase_Std@1.0.1"
             exit 1
           fi
+
+          # validate version is valid semver using suggested semver regex
+          # from https://semver.org/#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string
+          if command -v perl; then
+            if ! perl -e 'exit 1 unless shift =~ /^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;' "$DK_ID_VERSION"; then
+              echo "::error title=⛔ error hint::Invalid version '${DK_ID_VERSION}' in id '${{ inputs.id }}'. Version must be valid semver, like 1.0.1 or 1.0.0+some-build-metadata"
+              exit 1
+            fi
+          else
+            echo "::warning title=⚠️ warning hint::perl not found. Skipping semver validation for version '${DK_ID_VERSION}' in id '${{ inputs.id }}'. Version must be valid semver, like 1.0.1 or 1.0.0+some-build-metadata"
+          fi
+
+          # strip build metadata from version
+          DK_ID_VERSION="${DK_ID_VERSION%%+*}"
+
           echo "dk_id_library=${DK_ID_LIBRARY}" >> "$GITHUB_OUTPUT"
           echo "dk_id_version=${DK_ID_VERSION}" >> "$GITHUB_OUTPUT"
 
