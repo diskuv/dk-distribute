@@ -9,7 +9,7 @@ inputs:
     required: false
     default: '2.5'
   id:
-    description: 'The library and version of your distribution. Ex. CommonsBase_Std@1.0.1'
+    description: 'The library and version of your distribution. Ex. CommonsBase_Std@1.0.1. Any semver build metadata (a "+" and following characters) is stripped.'
     required: false # true does nothing
   pubkey:
     description: 'Your public key for the distribution version.'
@@ -71,12 +71,17 @@ runs:
           echo "dk_build_version_ref=${DK_BUILD_VERSION_REF}" >> "$GITHUB_OUTPUT"
           echo "dk_build_version_majmin=${DK_BUILD_VERSION_MAJMIN}" >> "$GITHUB_OUTPUT"
 
+          # strip build metadata from id
+          DK_ID="${{ inputs.id }}"
+          if [[ "$DK_ID" == *"+"* ]]; then
+            DK_ID="${DK_ID%%+*}"
+          fi
+
           # split id into library_id and version
-          if [[ "${{ inputs.id }}" != *@* ]]; then
+          if [[ "$DK_ID" != *@* ]]; then
             echo "::error title=⛔ error hint::Invalid id '${{ inputs.id }}'. Must be of the form SomeLibrary_Unit@Version, like CommonsBase_Std@1.0.1"
             exit 1
           fi
-          DK_ID="${{ inputs.id }}"
           DK_ID_LIBRARY="${DK_ID%@*}"
           DK_ID_VERSION="${DK_ID#*@}"
           if [[ -z "$DK_ID_LIBRARY" || -z "$DK_ID_VERSION" ]]; then
