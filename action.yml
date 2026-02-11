@@ -9,7 +9,7 @@ inputs:
     required: false
     default: '2.5'
   id:
-    description: 'The library and version of your distribution. Ex. CommonsBase_Std@1.0.1. Any semver build metadata (a "+" and following characters) is stripped.'
+    description: 'The library and version of your distribution. Ex. CommonsBase_Std@1.0.1. Any semver build metadata (a "+" and [0-9A-Za-z-] characters) is stripped.'
     required: false # true does nothing
   pubkey:
     description: 'Your public key for the distribution version.'
