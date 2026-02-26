@@ -210,7 +210,7 @@ runs:
             DK_BUILD_SECKEY: "${{ inputs.seckey }}"
         shell: bash
         if: runner.os != 'Windows'
-        # --trial option helps cross-platform CI caches since the cache+data is under the project t/ subdirectory
+        # --trial --errors-plain option helps cross-platform CI caches since the cache+data is under the project t/ subdirectory
         run: |
           echo distribute and combine ...
           shopt -s extglob # leading and trailing space trim
@@ -239,21 +239,21 @@ runs:
 
           part=1
           for object in "${TRIMMED_OBJECTS[@]}"; do
-            echo "Building object $object: dksrc/dk0 --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-tracestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -o $object"
-            dksrc/dk0 --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-tracestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -o "$object"
+            echo "Building object $object: dksrc/dk0 --trial --errors-plain ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-tracestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -o $object"
+            dksrc/dk0 --trial --errors-plain ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-tracestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -o "$object"
             part=$((part + 1))
           done
           for script in "${TRIMMED_SCRIPTS[@]}"; do
-            echo "Building script module $script: dksrc/dk0 --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-tracestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -s $script"
-            dksrc/dk0 --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-tracestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -s "$script"
+            echo "Building script module $script: dksrc/dk0 --trial --errors-plain ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-tracestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -s $script"
+            dksrc/dk0 --trial --errors-plain ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-tracestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -s "$script"
             part=$((part + 1))
           done
 
-          echo "Collecting tracestore: dksrc/dk0 --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-valuestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}'"
-          dksrc/dk0 --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-valuestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}'
+          echo "Collecting tracestore: dksrc/dk0 --trial --errors-plain ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-valuestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}'"
+          dksrc/dk0 --trial --errors-plain ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-valuestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}'
 
-          echo "Combining: dksrc/dk0 --trial ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
-          dksrc/dk0 --trial ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
+          echo "Combining: dksrc/dk0 --trial --errors-plain ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
+          dksrc/dk0 --trial --errors-plain ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
 
           du -sh dk-dist/*
 
@@ -265,7 +265,7 @@ runs:
         shell: bash
         if: runner.os != 'Windows'
         run: |
-          dksrc/dk0 --trial ${{ inputs.options }} --keys-env DK_BUILD query
+          dksrc/dk0 --trial --errors-plain ${{ inputs.options }} --keys-env DK_BUILD query
 
       - name: Distribute on Windows
         env:
@@ -297,30 +297,30 @@ runs:
 
           $part = 1
           foreach ($object in $TRIMMED_OBJECTS) {
-            Write-Host "Building object ${object}: dksrc\dk0.cmd --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-tracestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -o $object"
-            dksrc\dk0.cmd --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-tracestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -o $object
+            Write-Host "Building object ${object}: dksrc\dk0.cmd --trial --errors-plain ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-tracestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -o $object"
+            dksrc\dk0.cmd --trial --errors-plain ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-tracestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -o $object
             if ($LASTEXITCODE -ne 0) {
               throw "dk0 distribute failed with exit code $LASTEXITCODE"
             }
             $part++
           }
           foreach ($script in $TRIMMED_SCRIPTS) {
-            Write-Host "Building script module ${script}: dksrc\dk0.cmd --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-tracestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -s $script"
-            dksrc\dk0.cmd --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-tracestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -s $script
+            Write-Host "Building script module ${script}: dksrc\dk0.cmd --trial --errors-plain ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-tracestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -s $script"
+            dksrc\dk0.cmd --trial --errors-plain ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-tracestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -s $script
             if ($LASTEXITCODE -ne 0) {
               throw "dk0 distribute failed with exit code $LASTEXITCODE"
             }
             $part++
           }
 
-          Write-Host "Collecting tracestore: dksrc\dk0.cmd --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-valuestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}'"
-          dksrc\dk0.cmd --trial ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-valuestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}'
+          Write-Host "Collecting tracestore: dksrc\dk0.cmd --trial --errors-plain ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-valuestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}'"
+          dksrc\dk0.cmd --trial --errors-plain ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-valuestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}'
           if ($LASTEXITCODE -ne 0) {
             throw "dk0 distribute failed with exit code $LASTEXITCODE"
           }
 
-          Write-Host "Combining: dksrc\dk0.cmd --trial ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
-          dksrc\dk0.cmd --trial ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
+          Write-Host "Combining: dksrc\dk0.cmd --trial --errors-plain ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
+          dksrc\dk0.cmd --trial --errors-plain ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
           if ($LASTEXITCODE -ne 0) {
             throw "dk0 combine failed with exit code $LASTEXITCODE"
           }
@@ -339,7 +339,7 @@ runs:
         shell: pwsh
         if: runner.os == 'Windows'
         run: |
-          dksrc\dk0.cmd --trial ${{ inputs.options }} --keys-env DK_BUILD query
+          dksrc\dk0.cmd --trial --errors-plain ${{ inputs.options }} --keys-env DK_BUILD query
           if ($LASTEXITCODE -ne 0) {
             throw "dk0 query failed with exit code $LASTEXITCODE"
           }
