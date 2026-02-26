@@ -255,6 +255,8 @@ runs:
           echo "Combining: dksrc/dk0 --trial ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
           dksrc/dk0 --trial ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
 
+          du -sh dk-dist/*
+
       - name: Query traces on Unix
         env:
             DK_BUILD_PUBKEY: "${{ inputs.pubkey }}"
@@ -321,6 +323,12 @@ runs:
           dksrc\dk0.cmd --trial ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
           if ($LASTEXITCODE -ne 0) {
             throw "dk0 combine failed with exit code $LASTEXITCODE"
+          }
+
+          Get-ChildItem -Directory dk-dist | ForEach-Object {
+              $size = (Get-ChildItem $_.FullName -Recurse -File | Measure-Object -Property Length -Sum).Sum
+              $sizeGB = [math]::Round($size / 1GB, 2)
+              Write-Output "$($sizeGB) GB`t$($_.Name)"
           }
 
       - name: Query traces on Windows
