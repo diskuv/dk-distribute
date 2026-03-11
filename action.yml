@@ -27,11 +27,8 @@ inputs:
   seckey:
     description: 'Your secret key for the distribution version.'
     required: false # Give nice error message if empty in `steps`
-  objects:
-    description: 'The objects to build, separated by newlines or commas. Each object is SLOT:MODULE@VERSION. Example: Release.Agnostic:SomeTest_Std.Form@1.0.0'
-    required: false # true does nothing
-  scripts:
-    description: 'The script modules to build, separated by newlines or commas. Each script module is MODULE@VERSION. Example: SomeTest_Std.Rules@1.0.0'
+  cramtest:
+    description: 'The location of the distribution cram test. Example: etc/dk/v/CommonsBase_LLVM/dist-win32.t'
     required: false # true does nothing
   use-cache:
     description: 'Whether to cache value stores and trace stores between runs.'
@@ -41,6 +38,10 @@ inputs:
     description: 'Options to pass to `dk` and/or `dk0`. Default is `-I etc/dk/v`'
     required: false
     default: '-I etc/dk/v'
+  experimental-mlfront-owner:
+    description: "The 'dk' repository owner's username. The GitHub repository would then be github.com/<owner>/dk.git. Defaults to 'diskuv'. Do not use for production."
+    required: false
+    default: 'diskuv'
   experimental-mlfront-ref:
     description: 'Use the bleeding edge of https://gitlab.com/dkml/build-tools/MlFront.git. Do not use for production.'
     required: false
@@ -127,7 +128,19 @@ runs:
       # --------- C.1: Get dksrc/dk0 ----------
 
       - name: Get dksrc/dk0
-        if: inputs.experimental-mlfront-ref == '' || inputs.experimental-mlfront-ref == 'false'
+        if: >
+          inputs.experimental-mlfront-owner != ''
+          && (inputs.experimental-mlfront-ref == '' || inputs.experimental-mlfront-ref == 'false')
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ inputs.experimental-mlfront-owner }}/dk
+          path: dksrc
+          ref: ${{ steps.dk-vars.outputs.dk_build_version_ref }}
+
+      - name: Get dksrc/dk0
+        if: >
+          inputs.experimental-mlfront-owner == ''
+          && (inputs.experimental-mlfront-ref == '' || inputs.experimental-mlfront-ref == 'false')
         uses: actions/checkout@v5
         with:
           repository: diskuv/dk
