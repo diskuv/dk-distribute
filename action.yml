@@ -38,7 +38,7 @@ inputs:
     description: 'Options to pass to `dk` and/or `dk0`. Default is `-I etc/dk/v`'
     required: false
     default: '-I etc/dk/v'
-  experimental-mlfront-owner:
+  experimental-dk-owner:
     description: "The 'dk' repository owner's username. The GitHub repository would then be github.com/<owner>/dk.git. Defaults to 'diskuv'. Do not use for production."
     required: false
     default: 'diskuv'
@@ -133,17 +133,17 @@ runs:
 
       - name: Get dksrc/dk0
         if: >
-          inputs.experimental-mlfront-owner != ''
+          inputs.experimental-dk-owner != ''
           && (inputs.experimental-mlfront-ref == '' || inputs.experimental-mlfront-ref == 'false')
         uses: actions/checkout@v5
         with:
-          repository: ${{ inputs.experimental-mlfront-owner }}/dk
+          repository: ${{ inputs.experimental-dk-owner }}/dk
           path: dksrc
           ref: ${{ steps.dk-vars.outputs.dk_build_version_ref }}
 
       - name: Get dksrc/dk0
         if: >
-          inputs.experimental-mlfront-owner == ''
+          inputs.experimental-dk-owner == ''
           && (inputs.experimental-mlfront-ref == '' || inputs.experimental-mlfront-ref == 'false')
         uses: actions/checkout@v5
         with:
