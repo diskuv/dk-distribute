@@ -63,11 +63,11 @@ runs:
           echo "::error title=⛔ error hint::Missing required input. You need to set the 'id' input in the `with:` block of the workflow step."
           exit 1
 
-      - name: Check Objects and Scripts
-        if: inputs.objects == '' && inputs.scripts == ''
+      - name: Check Distribution Script
+        if: inputs.distscript == ''
         shell: bash
         run: |
-          echo "::error title=⛔ error hint::Missing required input. You need to set the 'objects' or 'scripts' input or both in the `with:` block of the workflow step."
+          echo "::error title=⛔ error hint::Missing required input. You need to set the 'distscript' input in the `with:` block of the workflow step."
           exit 1
 
       - name: Set DK variables
