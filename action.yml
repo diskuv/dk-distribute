@@ -82,8 +82,9 @@ runs:
           echo "dk_build_version_ref=${DK_BUILD_VERSION_REF}" | tee -a "$GITHUB_OUTPUT"
           echo "dk_build_version_majmin=${DK_BUILD_VERSION_MAJMIN}" | tee -a "$GITHUB_OUTPUT"
 
-          # distribution part
+          # distribution part. etc/dk/v/XXX/YYY.t -> YYY
           part=$(basename ${{ inputs.distscript }})
+          part="${part%%.*}"
           echo "dk_dist_part=${part}" | tee -a "$GITHUB_OUTPUT"
 
           # split id into library_id and version
@@ -261,8 +262,8 @@ runs:
         run: |
           Write-Host "distribute and combine ..."
 
-          Write-Host "Building object ${object}: dksrc\dk0.cmd --trial --errors-plain ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -o $object"
-          dksrc\dk0.cmd --trial --errors-plain ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' -o $object
+          Write-Host "Building object ${object}: dksrc\dk0.cmd --trial --errors-plain ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ inputs.distscript }}"
+          dksrc\dk0.cmd --trial --errors-plain ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ inputs.distscript }}
           if ($LASTEXITCODE -ne 0) {
             throw "dk0 distribute failed with exit code $LASTEXITCODE"
           }
