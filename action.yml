@@ -293,6 +293,14 @@ runs:
             throw "dk0 query failed with exit code $LASTEXITCODE"
           }
 
+      - name: Save logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          # ex. t/p/476/zx3y/l/Release.Agnostic/stdout.log
+          path: t/p/*/*/l/*/
+
       # --------- X.1 Cache Save ----------
       - name: Cache save dk stores
         if: inputs.use-cache != '' && steps.restore-cache-dk-distribute.outputs.cache-hit == ''
