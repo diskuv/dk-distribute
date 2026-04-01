@@ -37,7 +37,6 @@ inputs:
   options:
     description: 'Options to pass to `dk` and/or `dk0`. Default is `-I etc/dk/v`'
     required: false
-    default: '-I etc/dk/v'
   experimental-dk-owner:
     description: "The 'dk' repository owner's username. The GitHub repository would then be github.com/<owner>/dk.git. Defaults to 'diskuv'. Do not use for production."
     required: false
@@ -47,7 +46,7 @@ inputs:
     required: false
     default: 'false'
 runs:
-  using: composite
+  using: composite    
   steps:
       - name: Check Runner OS
         if: runner.os != 'Linux' && runner.os != 'Windows' && runner.os != 'macOS'
@@ -73,30 +72,35 @@ runs:
       - name: Set DK variables
         id: dk-vars
         shell: bash
+        env:
+          INPUTVERSION: ${{ inputs.dk-version }}
+          INPUTOPTIONS: ${{ inputs.options }}
+          INPUTDISTSCRIPT: ${{ inputs.distscript }}
+          INPUTID: ${{ inputs.id }}
         run: |
-          case "${{ inputs.dk-version }}" in
+          case "${{ env.INPUTVERSION }}" in
             2.4) DK_BUILD_VERSION_REF=V2_4; DK_BUILD_VERSION_MAJMIN=2.4 ;;
             2.5) DK_BUILD_VERSION_REF=V2_5; DK_BUILD_VERSION_MAJMIN=2.5 ;;
-            *) echo "::error title=⛔ error hint::Unsupported version '${{ inputs.dk-version }}'. Supported versions: 2.4, 2.5"; exit 1 ;;
+            *) echo "::error title=⛔ error hint::Unsupported version '${{ env.INPUTVERSION }}'. Supported versions: 2.4, 2.5"; exit 1 ;;
           esac
           echo "dk_build_version_ref=${DK_BUILD_VERSION_REF}" | tee -a "$GITHUB_OUTPUT"
           echo "dk_build_version_majmin=${DK_BUILD_VERSION_MAJMIN}" | tee -a "$GITHUB_OUTPUT"
 
           # distribution part. etc/dk/v/XXX/YYY.t -> YYY
-          part=$(basename ${{ inputs.distscript }})
+          part=$(basename ${{ env.INPUTDISTSCRIPT }})
           part="${part%%.*}"
           echo "dk_dist_part=${part}" | tee -a "$GITHUB_OUTPUT"
 
           # split id into library_id and version
-          if [[ "$${{ inputs.id }}" != *@* ]]; then
-            echo "::error title=⛔ error hint::Invalid id '${{ inputs.id }}'. Must be of the form SomeLibrary_Unit@Version, like CommonsBase_Std@1.0.1"
+          if [[ "$${{ env.INPUTID }}" != *@* ]]; then
+            echo "::error title=⛔ error hint::Invalid id '${{ env.INPUTID }}'. Must be of the form SomeLibrary_Unit@Version, like CommonsBase_Std@1.0.1"
             exit 1
           fi
-          DK_ID="${{ inputs.id }}"
+          DK_ID="${{ env.INPUTID }}"
           DK_ID_LIBRARY="${DK_ID%@*}"
           DK_ID_VERSION="${DK_ID#*@}"
           if [[ -z "$DK_ID_LIBRARY" || -z "$DK_ID_VERSION" ]]; then
-            echo "::error title=⛔ error hint::Invalid id '${{ inputs.id }}'. Must be of the form SomeLibrary_Unit@Version, like CommonsBase_Std@1.0.1"
+            echo "::error title=⛔ error hint::Invalid id '${{ env.INPUTID }}'. Must be of the form SomeLibrary_Unit@Version, like CommonsBase_Std@1.0.1"
             exit 1
           fi
 
@@ -104,11 +108,11 @@ runs:
           # from https://semver.org/#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string
           if command -v perl; then
             if ! perl -e 'exit 1 unless shift =~ /^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;' "$DK_ID_VERSION"; then
-              echo "::error title=⛔ error hint::Invalid version '${DK_ID_VERSION}' in id '${{ inputs.id }}'. Version must be valid semver, like 1.0.1 or 1.0.0+some-build-metadata"
+              echo "::error title=⛔ error hint::Invalid version '${DK_ID_VERSION}' in id '${{ env.INPUTID }}'. Version must be valid semver, like 1.0.1 or 1.0.0+some-build-metadata"
               exit 1
             fi
           else
-            echo "::warning title=⚠️ warning hint::perl not found. Skipping semver validation for version '${DK_ID_VERSION}' in id '${{ inputs.id }}'. Version must be valid semver, like 1.0.1 or 1.0.0+some-build-metadata"
+            echo "::warning title=⚠️ warning hint::perl not found. Skipping semver validation for version '${DK_ID_VERSION}' in id '${{ env.INPUTID }}'. Version must be valid semver, like 1.0.1 or 1.0.0+some-build-metadata"
           fi
 
           # strip build metadata from version
@@ -163,7 +167,7 @@ runs:
           #   2025-10-10. initial
           opam-repositories: |
             default: git+https://github.com/ocaml/opam-repository.git#88e773ad9e5a6ed02fb2c1fab59e649624ac9db4
-          cache-prefix: dk-distribute-v1
+          cache-prefix: dk-distribute-v2
       - name: Get MlFront
         if: inputs.experimental-mlfront-ref != '' && inputs.experimental-mlfront-ref != 'false'
         shell: bash
@@ -226,20 +230,22 @@ runs:
         env:
             DK_BUILD_PUBKEY: "${{ inputs.pubkey }}"
             DK_BUILD_SECKEY: "${{ inputs.seckey }}"
+            INPUTOPTIONS: ${{ inputs.options }}
+            INPUTDISTSCRIPT: ${{ inputs.distscript }}
         shell: bash
         if: runner.os != 'Windows'
-        # --trial --errors-plain option helps cross-platform CI caches since the cache+data is under the project t/ subdirectory
+        # --errors-plain option helps cross-platform CI caches since the cache+data is under the project t/ subdirectory
         run: |
           echo distribute and combine ...
 
-          echo "Building object $object: dksrc/dk0 --trial --errors-plain ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ inputs.distscript }}"
-          dksrc/dk0 --trial --errors-plain ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ inputs.distscript }}
+          echo "Building object $object: dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ env.INPUTDISTSCRIPT }}"
+          dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ env.INPUTDISTSCRIPT }}
 
-          echo "Collecting tracestore: dksrc/dk0 --trial --errors-plain ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-valuestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}'"
-          dksrc/dk0 --trial --errors-plain ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-valuestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}'
+          echo "Collecting tracestore: dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-valuestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}'"
+          dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-valuestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}'
 
-          echo "Combining: dksrc/dk0 --trial --errors-plain ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
-          dksrc/dk0 --trial --errors-plain ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
+          echo "Combining: dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
+          dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
 
           du -sh dk-dist/*
 
@@ -251,25 +257,27 @@ runs:
         shell: bash
         if: runner.os != 'Windows'
         run: |
-          dksrc/dk0 --trial --errors-plain ${{ inputs.options }} --keys-env DK_BUILD query
+          dksrc/dk0 --errors-plain ${{ inputs.options }} --keys-env DK_BUILD query
 
       - name: Distribute on Windows
         env:
             DK_BUILD_PUBKEY: "${{ inputs.pubkey }}"
             DK_BUILD_SECKEY: "${{ inputs.seckey }}"
+            INPUTOPTIONS: ${{ inputs.options }}
+            INPUTDISTSCRIPT: ${{ inputs.distscript }}
         shell: pwsh
         if: runner.os == 'Windows'
         run: |
           Write-Host "distribute and combine ..."
 
-          Write-Host "Building object ${object}: dksrc\dk0.cmd --trial --errors-plain ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ inputs.distscript }}"
-          dksrc\dk0.cmd --trial --errors-plain ${{ inputs.options }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ inputs.distscript }}
+          Write-Host "Building object ${object}: dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ env.INPUTDISTSCRIPT }}"
+          dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ env.INPUTDISTSCRIPT }}
           if ($LASTEXITCODE -ne 0) {
             throw "dk0 distribute failed with exit code $LASTEXITCODE"
           }
 
-          Write-Host "Combining: dksrc\dk0.cmd --trial --errors-plain ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
-          dksrc\dk0.cmd --trial --errors-plain ${{ inputs.options }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
+          Write-Host "Combining: dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
+          dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
           if ($LASTEXITCODE -ne 0) {
             throw "dk0 combine failed with exit code $LASTEXITCODE"
           }
@@ -288,7 +296,7 @@ runs:
         shell: pwsh
         if: runner.os == 'Windows'
         run: |
-          dksrc\dk0.cmd --trial --errors-plain ${{ inputs.options }} --keys-env DK_BUILD query
+          dksrc\dk0.cmd --errors-plain ${{ inputs.options }} --keys-env DK_BUILD query
           if ($LASTEXITCODE -ne 0) {
             throw "dk0 query failed with exit code $LASTEXITCODE"
           }
