@@ -19,7 +19,7 @@ inputs:
     required: false
     default: '2.5'
   id:
-    description: 'The library and version of your distribution. Ex. CommonsBase_Std@1.0.1. The version must be valid semver. Any semver build metadata (a "+" and [0-9A-Za-z-] characters) is stripped.'
+    description: 'The library and version of your distribution. Defaults to github repository (without the owner) plus @ plus the github reference (ie. tag or branch). Ex. CommonsBase_Std@1.0.1. The version must be valid semver. Any semver build metadata (a "+" and [0-9A-Za-z-] characters) is stripped.'
     required: false # true does nothing
   pubkey:
     description: 'Your public key for the distribution version.'
@@ -55,13 +55,6 @@ runs:
           echo "::error title=⛔ error hint::Support Linux, Windows, and macOS Only"
           exit 1
 
-      - name: Check Library Id and Version
-        if: inputs.id == ''
-        shell: bash
-        run: |
-          echo "::error title=⛔ error hint::Missing required input. You need to set the 'id' input in the `with:` block of the workflow step."
-          exit 1
-
       - name: Check Distribution Script
         if: inputs.distscript == ''
         shell: bash
@@ -91,12 +84,20 @@ runs:
           part="${part%%.*}"
           echo "dk_dist_part=${part}" | tee -a "$GITHUB_OUTPUT"
 
+          # default 'id' will be github.repository + '@' + github.ref_name except
+          # github.repository (owner/repo) will not have the "owner/" prefix.
+          # ex. 'repo@1.2.3'
+          DK_ID='${{ env.INPUTID }}'
+          if [ -z "$DK_ID" ]; then
+            DK_ID_REPOSITORY="${{ github.repository }}"
+            DK_ID="${DK_ID_REPOSITORY#*/}@${{ github.ref_name }}"
+          fi
+
           # split id into library_id and version
-          if [[ "$${{ env.INPUTID }}" != *@* ]]; then
+          if [[ "$DK_ID}" != *@* ]]; then
             echo "::error title=⛔ error hint::Invalid id '${{ env.INPUTID }}'. Must be of the form SomeLibrary_Unit@Version, like CommonsBase_Std@1.0.1"
             exit 1
           fi
-          DK_ID="${{ env.INPUTID }}"
           DK_ID_LIBRARY="${DK_ID%@*}"
           DK_ID_VERSION="${DK_ID#*@}"
           if [[ -z "$DK_ID_LIBRARY" || -z "$DK_ID_VERSION" ]]; then
@@ -108,11 +109,11 @@ runs:
           # from https://semver.org/#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string
           if command -v perl; then
             if ! perl -e 'exit 1 unless shift =~ /^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;' "$DK_ID_VERSION"; then
-              echo "::error title=⛔ error hint::Invalid version '${DK_ID_VERSION}' in id '${{ env.INPUTID }}'. Version must be valid semver, like 1.0.1 or 1.0.0+some-build-metadata"
+              echo "::error title=⛔ error hint::Invalid version '${DK_ID_VERSION}' in id '${DK_ID}'. Version must be valid semver, like 1.0.1 or 1.0.0+some-build-metadata"
               exit 1
             fi
           else
-            echo "::warning title=⚠️ warning hint::perl not found. Skipping semver validation for version '${DK_ID_VERSION}' in id '${{ env.INPUTID }}'. Version must be valid semver, like 1.0.1 or 1.0.0+some-build-metadata"
+            echo "::warning title=⚠️ warning hint::perl not found. Skipping semver validation for version '${DK_ID_VERSION}' in id '${DK_ID}'. Version must be valid semver, like 1.0.1 or 1.0.0+some-build-metadata"
           fi
 
           # strip build metadata from version
