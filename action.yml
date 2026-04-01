@@ -46,7 +46,7 @@ inputs:
     required: false
     default: 'false'
 runs:
-  using: composite    
+  using: composite
   steps:
       - name: Check Runner OS
         if: runner.os != 'Linux' && runner.os != 'Windows' && runner.os != 'macOS'
@@ -125,7 +125,7 @@ runs:
           DK_ID_VERSION_MAJMINUNDER=$(printf "%s" "${DK_ID_VERSION}" | awk -F. '{print $1"_"$2}')
           echo "dk_id_version_majminunder=${DK_ID_VERSION_MAJMINUNDER}" | tee -a "$GITHUB_OUTPUT"
 
-      - name: Check Key Pairs
+      - name: Check Key Pairs # Must be after 'dk-vars' step for correct error message
         if: inputs.pubkey == '' || inputs.seckey == ''
         shell: bash
         # Produce message like:
@@ -133,6 +133,60 @@ runs:
         run: |
           echo "::error title=⛔ error hint::Distribution keypair missing. You need to populate 'distribute_${{ steps.dk-vars.outputs.dk_id_version_majminunder }}_pubkey' and 'distribute_${{ steps.dk-vars.outputs.dk_id_version_majminunder }}_seckey' in the Secrets for your workflow. See more in https://docs.github.com/en/actions/security-guides/encrypted-secrets. Then set the 'pubkey' and 'seckey' inputs in the 'with:' block of the workflow step, like the following on two lines: ${{ format('pubkey: {0}{1}{1} secrets.distribute_{3}_pubkey {2}{2} seckey: {0}{1}{1} secrets.distribute_{3}_seckey {2}{2}', '\$', '{', '}', steps.dk-vars.outputs.dk_id_version_majminunder) }}"
           exit 1
+
+      - name: Document Import Command
+        shell: bash
+        run: |
+          PROJECTDIR='${{ github.workspace }}'
+
+          # parse options
+          tag='${{ github.ref_name }}'
+          repository='${{ github.repository }}'
+          capturefile="$GITHUB_STEP_SUMMARY"
+          capturemarkdown=true
+          usage() {
+            echo "Usage: describe-import-gh-release.sh [-c capturefile] [-m] -t tag -r repository" >&2
+            echo "-c: A capturefile will be appended with the import command for each package" >&2
+            echo "    so that the commands can be re-run manually and committed." >&2
+            echo "-m: Use Markdown when writing the capturefile. Useful in GitHub Actions" >&2
+            echo "    with '-c \$GITHUB_STEP_SUMMARY' for easy copy-and-paste in the job." >&2
+            echo "-t: The tag of the GitHub release to import." >&2
+            echo "-r: The GitHub repository in the format 'owner/repo'." >&2
+            echo "Example: describe-import-gh-release.sh -t 2.5.1 -r diskuv/dk CommonsBase_Std CommonsBase_Build" >&2
+            exit 1
+          }
+          #while getopts "t:r:c:m" opt; do
+          #  case $opt in
+          #    t) tag="$OPTARG" ;;
+          #    r) repository="$OPTARG" ;;
+          #    c) capturefile="$OPTARG" ;;
+          #    m) capturemarkdown=true ;;
+          #    *) usage ;;
+          #  esac
+          #done
+          #shift $((OPTIND - 1))
+          if [ -z "$repository" ]; then
+            echo "Error: repository is required" >&2
+            usage
+          fi
+          if [ -z "$tag" ]; then
+            echo "Error: tag is required" >&2
+            usage
+          fi
+
+          if [ "$capturemarkdown" = true ] && [ -n "$capturefile" ]; then
+            printf "### Importing this package\n\n" >> "$capturefile"
+            printf '```\n' >> "$capturefile"
+          fi
+
+          printf "./dk0 import-github-l2 --repo %s --tag %s --outdir %s/etc/dk/i/\n" "$repository" "$tag" "$PROJECTDIR"
+          if [ -n "$capturefile" ]; then
+            printf "./dk0 import-github-l2 --repo %s --tag %s --outdir etc/dk/i/\n" "$repository" "$tag" >> "$capturefile"
+          fi
+
+          if [ "$capturemarkdown" = true ] && [ -n "$capturefile" ]; then
+              printf '```\n' >> "$capturefile"
+          fi
 
       # --------- C.1: Get dksrc/dk0 ----------
 
