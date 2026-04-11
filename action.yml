@@ -195,7 +195,7 @@ runs:
         if: >
           inputs.experimental-dk-owner != ''
           && (inputs.experimental-mlfront-ref == '' || inputs.experimental-mlfront-ref == 'false')
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: ${{ inputs.experimental-dk-owner }}/dk
           path: dksrc
@@ -205,7 +205,7 @@ runs:
         if: >
           inputs.experimental-dk-owner == ''
           && (inputs.experimental-mlfront-ref == '' || inputs.experimental-mlfront-ref == 'false')
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: diskuv/dk
           path: dksrc
