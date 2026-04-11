@@ -267,7 +267,7 @@ runs:
       # --------- E.1 Cache Restore ----------
       - name: Cache restore dk stores
         if: inputs.use-cache != ''
-        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         id: restore-cache-dk-distribute
         with:
             # The data stores (and build keys) are safe to share between Windows, macOS and Linux
@@ -367,7 +367,7 @@ runs:
       # --------- X.1 Cache Save ----------
       - name: Cache save dk stores
         if: inputs.use-cache != '' && steps.restore-cache-dk-distribute.outputs.cache-hit == ''
-        uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         id: save-cache-dk-distribute
         with:
             # The data stores (and build keys) are safe to share between Windows, macOS and Linux
