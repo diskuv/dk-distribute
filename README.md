@@ -94,14 +94,6 @@ For example, if this is your first major and minor version, open PowerShell or a
 ./dk0 -- prepare-version --ci github 0.1
 ```
 
-## Platforms
-
-### ubuntu-*
-
-Example: `ubuntu-24.04`
-
-The `curl` package and the `build-essential` (GCC C compiler, etc.) package are auto installed by `diskuv/dk-distribute@v2`.
-
 ## Cache value and trace stores
 
 Caching reduces build and download time. Caching is disabled by default since pristine builds are recommended when distributing builds to the public.
