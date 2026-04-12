@@ -135,6 +135,12 @@ runs:
           echo "::error title=⛔ error hint::Distribution keypair missing. You need to populate 'distribute_${{ steps.dk-vars.outputs.dk_id_version_majminunder }}_pubkey' and 'distribute_${{ steps.dk-vars.outputs.dk_id_version_majminunder }}_seckey' in the Secrets for your workflow. See more in https://docs.github.com/en/actions/security-guides/encrypted-secrets. Then set the 'pubkey' and 'seckey' inputs in the 'with:' block of the workflow step, like the following on two lines: ${{ format('pubkey: {0}{1}{1} secrets.distribute_{3}_pubkey {2}{2} seckey: {0}{1}{1} secrets.distribute_{3}_seckey {2}{2}', '\$', '{', '}', steps.dk-vars.outputs.dk_id_version_majminunder) }}"
           exit 1
 
+      # if and only if the runs-on is ubuntu-*, then do 'apt update && apt install -y curl build-essential'
+      - name: Install compiler and curl on Ubuntu
+        if: runner.os == 'Linux' && startsWith(runner.image, 'ubuntu-')
+        shell: bash
+        run: sudo apt update && sudo apt install -y curl build-essential
+
       - name: Document Import Command
         shell: bash
         run: |
