@@ -38,11 +38,14 @@ jobs:
           - runs-on: windows-latest
             distscript: dist-win32.u
           - runs-on: ubuntu-latest
-            distscript: dist-linux.u
+            distscript: dist-linux-glibc.u
+            image: quay.io/pypa/manylinux_2_28_x86_64:2026.04.08-5 # glibc 2.28 + gcc 14.2.1: highly compatible glibc; system gcc deprecated once GCC bootstrapped in dk0.
           - runs-on: macos-latest
             distbase: dist-macos.u
 
     runs-on: ${{ matrix.runs-on }}
+    container:
+      image: ${{ matrix.image }}
     steps:
       - name: Harden Runner # Optional but recommended
         uses: step-security/harden-runner@f808768d1510423e83855289c910610ca9b43176 # v2.17.0
