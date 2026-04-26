@@ -242,9 +242,6 @@ runs:
           echo "Building object $object: dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ env.INPUTDISTSCRIPT }}"
           dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ env.INPUTDISTSCRIPT }}
 
-          echo "Collecting tracestore: dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-valuestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}'"
-          dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-$part --no-valuestore --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}'
-
           echo "Combining: dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
           dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
 
