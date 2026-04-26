@@ -302,14 +302,12 @@ runs:
       - name: Document Import Command
         shell: bash
         run: |
-          PROJECTDIR='${{ github.workspace }}'
-
           # parse options
           tag='${{ github.ref_name }}'
           repository='${{ github.repository }}'
           capture() {
             printf "%s\n" "$@" >> "$GITHUB_STEP_SUMMARY"
-            printf "%s\n" "$@" >> '${{ github.workspace }}-CHANGELOG.txt'
+            printf "%s\n" "$@" >> '.dist-CHANGELOG.txt'
           }
           if [ -z "$repository" ]; then
             echo "Error: repository is required" >&2
