@@ -13,7 +13,7 @@ description: 'Distribute your dk modules in your GitHub Action workflow'
 branding:
   icon: cloud-lightning
   color: 'gray-dark'
-inputs:
+inputs: # Max 25 inputs is practical limit. https://github.com/orgs/community/discussions/182122
   dk-version:
     description: 'The version of the dk build system to use. The default is the latest version.'
     required: false
@@ -35,7 +35,7 @@ inputs:
     required: false
     default: 'false'
   options:
-    description: 'Options to pass to `dk` and/or `dk0`. Default is `-I etc/dk/v`'
+    description: 'Options to pass to `dk` and/or `dk0`.'
     required: false
   experimental-dk-owner:
     description: "The 'dk' repository owner's username. The GitHub repository would then be github.com/<owner>/dk.git. Defaults to 'diskuv'. Do not use for production."
@@ -43,6 +43,10 @@ inputs:
     default: 'diskuv'
   experimental-mlfront-ref:
     description: 'Use the bleeding edge of https://gitlab.com/dkml/build-tools/MlFront.git. Do not use for production.'
+    required: false
+    default: 'false'
+  standalone:
+    description: 'Whether to run the final combine step in the dk-distribute workflow. Do not use when running distribution scripts on more than one platform.'
     required: false
     default: 'false'
 runs:
@@ -233,17 +237,18 @@ runs:
             DK_BUILD_SECKEY: "${{ inputs.seckey }}"
             INPUTOPTIONS: ${{ inputs.options }}
             INPUTDISTSCRIPT: ${{ inputs.distscript }}
+            INPUTSTANDALONE: ${{ inputs.standalone }}
         shell: bash
         if: runner.os != 'Windows'
         # --errors-plain option helps cross-platform CI caches since the cache+data is under the project t/ subdirectory
         run: |
-          echo distribute and combine ...
-
-          echo "Building object $object: dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ env.INPUTDISTSCRIPT }}"
+          echo "dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ env.INPUTDISTSCRIPT }}"
           dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ env.INPUTDISTSCRIPT }}
 
-          echo "Combining: dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
-          dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
+          if [ "${{ env.INPUTSTANDALONE }}" != "true" ]; then
+            echo "dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
+            dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
+          fi
 
           du -sh dk-dist/*
 
@@ -263,21 +268,22 @@ runs:
             DK_BUILD_SECKEY: "${{ inputs.seckey }}"
             INPUTOPTIONS: ${{ inputs.options }}
             INPUTDISTSCRIPT: ${{ inputs.distscript }}
+            INPUTSTANDALONE: ${{ inputs.standalone }}
         shell: pwsh
         if: runner.os == 'Windows'
         run: |
-          Write-Host "distribute and combine ..."
-
-          Write-Host "Building object ${object}: dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ env.INPUTDISTSCRIPT }}"
+          Write-Host "dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ env.INPUTDISTSCRIPT }}"
           dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ env.INPUTDISTSCRIPT }}
           if ($LASTEXITCODE -ne 0) {
             throw "dk0 distribute failed with exit code $LASTEXITCODE"
           }
 
-          Write-Host "Combining: dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
-          dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
-          if ($LASTEXITCODE -ne 0) {
-            throw "dk0 combine failed with exit code $LASTEXITCODE"
+          if ("${{ env.INPUTSTANDALONE }}" -ne "true") {
+            Write-Host "dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
+            dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
+            if ($LASTEXITCODE -ne 0) {
+              throw "dk0 combine failed with exit code $LASTEXITCODE"
+            }
           }
 
           Get-ChildItem -Directory dk-dist | ForEach-Object {
@@ -301,30 +307,43 @@ runs:
 
       - name: Document Import Command
         shell: bash
+        env:
+          INPUTSTANDALONE: ${{ inputs.standalone }}
         run: |
-          # parse options
-          tag='${{ github.ref_name }}'
-          repository='${{ github.repository }}'
-          capture() {
-            printf "%s\n" "$@" >> "$GITHUB_STEP_SUMMARY"
-            printf "%s\n" "$@" >> '.dist-CHANGELOG.txt'
-          }
-          if [ -z "$repository" ]; then
-            echo "Error: repository is required" >&2
-            usage
-          fi
-          if [ -z "$tag" ]; then
-            echo "Error: tag is required" >&2
-            usage
-          fi
+          if [ "${{ env.INPUTSTANDALONE }}" == "true" ]; then
+            # parse options
+            tag='${{ github.ref_name }}'
+            repository='${{ github.repository }}'
+            capture() {
+              printf "%s\n" "$@" >> "$GITHUB_STEP_SUMMARY"
+              printf "%s\n" "$@" >> '.dist-CHANGELOG.txt'
+            }
+            if [ -z "$repository" ]; then
+              echo "Error: repository is required" >&2
+              usage
+            fi
+            if [ -z "$tag" ]; then
+              echo "Error: tag is required" >&2
+              usage
+            fi
 
-          capture "### Importing this package"
-          capture ''
-          capture '```'
+            capture "### Importing this package version"
+            capture ''
+            capture '```'
 
-          printf "./dk0 add github-l2 %s@%s\n" "$repository" "$tag"
-          capture "./dk0 add github-l2 ${repository}@${tag}"
-          capture '```'
+            printf "./dk0 add github-l2 %s@%s\n" "$repository" "$tag"
+            capture "./dk0 add github-l2 ${repository}@${tag}"
+            capture '```'
+
+            capture ''
+            capture "### Importing the latest package version"
+            capture ''
+            capture '```'
+
+            printf "./dk0 add github-l2 %s\n" "$repository"
+            capture "./dk0 add github-l2 ${repository}"
+            capture '```'
+          fi
 
       - name: Save logs
         if: always()
@@ -333,6 +352,13 @@ runs:
           name: logs
           # ex. t/p/476/zx3y/l/Release.Agnostic/stdout.log
           path: t/p/*/*/l/*/
+
+      - name: Share distribution artifacts
+        if: inputs.standalone != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: distribution-${{ inputs.distscript }}
+          path: dk-dist/
 
       # --------- X.1 Cache Save ----------
       - name: Cache save dk stores

@@ -13,13 +13,8 @@ on:
   workflow_dispatch: # allow manual triggering from GitHub page
 
 jobs:
+  # Job will run distribution scripts on one or more platforms
   distribute:
-    permissions:
-      contents: write # for action-gh-release
-      id-token: write # for actions/attest-build-provenance
-      attestations: write # for actions/attest-build-provenance
-      artifact-metadata: write # for actions/attest-build-provenance
-
     # The secrets created by `./dk0 prepare-version --ci github MAJOR.MINOR`
     # are tied to this environment only.
     environment: dk-distribution
@@ -61,6 +56,28 @@ jobs:
             use-cache: true
             distscript: ${{ matrix.distscript }}
 
+  # Job will combine artifacts from multiple platforms and release as a single distribution
+  combine:
+    needs: distribute
+    permissions:
+      contents: write # for action-gh-release
+      id-token: write # for actions/attest-build-provenance
+      attestations: write # for actions/attest-build-provenance
+      artifact-metadata: write # for actions/attest-build-provenance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner # Optional but recommended
+        uses: step-security/harden-runner@f808768d1510423e83855289c910610ca9b43176 # v2.17.0
+        with: { egress-policy: audit }
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Combine Modules
+        uses: diskuv/dk-distribute/combine@v2
+        with:
+            experimental-dk-owner: ${{ github.repository_owner == 'dkpkg' && 'diskuv' || github.repository_owner }}
+            experimental-mlfront-ref: ${{ github.ref_type != 'tag' && 'HEAD' }}
+
       - name: Attest
         id: attest
         uses: actions/attest-build-provenance@v3
@@ -68,7 +85,8 @@ jobs:
 
       - name: Release ${{ github.job }}
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1. Mar 15, 2026
-        with: { files: dk-dist/*, body_path: "${{ github.workspace }}-CHANGELOG.txt" }
+        with: { files: dk-dist/*, body_path: ".dist-CHANGELOG.txt" }
+
 ```
 
 Be sure to review the following places carefully:

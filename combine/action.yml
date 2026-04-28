@@ -1,0 +1,253 @@
+# MAINTENANCE NOTES
+# -----------------
+#
+# * Any backwards incompatible inputs require a major version change.
+# * Ordinarily for the same major+minor `dk-version` that cache should be compatible across patch versions.
+#   But if a dk0 patch release accidentally corrupts a cache, search/replace and bump "-x1" to evict
+#   _every_ user cache AND put a note in the release notes AND put a
+#   "⚠️ warning: cache evicted administratively" as a GitHub step for at least a week. You might make
+#   that easier for users by using a `if:` on the cache to use a bump (ex. "-x1" -> "-x2") only for
+#   the affected major+minor `dk-version`
+name: 'Combine dk modules'
+description: 'Combine one or more dk modules into a single distribution'
+branding:
+  icon: cloud-lightning
+  color: 'gray-dark'
+inputs:
+  dk-version:
+    description: 'The version of the dk build system to use. The default is the latest version.'
+    required: false
+    default: '2.5'
+  id:
+    description: 'The library and version of your distribution. Defaults to github repository (without the owner) plus @ plus the github reference (ie. tag or branch). Ex. CommonsBase_Std@1.0.1. The version must be valid semver. Any semver build metadata (a "+" and [0-9A-Za-z-] characters) is stripped.'
+    required: false # true does nothing
+  options:
+    description: 'Options to pass to `dk` and/or `dk0`.'
+    required: false
+  experimental-dk-owner:
+    description: "The 'dk' repository owner's username. The GitHub repository would then be github.com/<owner>/dk.git. Defaults to 'diskuv'. Do not use for production."
+    required: false
+    default: 'diskuv'
+  experimental-mlfront-ref:
+    description: 'Use the bleeding edge of https://gitlab.com/dkml/build-tools/MlFront.git. Do not use for production.'
+    required: false
+    default: 'false'
+runs:
+  using: composite
+  steps:
+      - name: Check Runner OS
+        if: runner.os != 'Linux' && runner.os != 'Windows' && runner.os != 'macOS'
+        shell: bash
+        run: |
+          echo "::error title=⛔ error hint::Support Linux, Windows, and macOS Only"
+          exit 1
+
+      - name: Set DK variables
+        id: dk-vars
+        shell: bash
+        env:
+          INPUTVERSION: ${{ inputs.dk-version }}
+          INPUTOPTIONS: ${{ inputs.options }}
+          INPUTID: ${{ inputs.id }}
+        run: |
+          case "${{ env.INPUTVERSION }}" in
+            2.4) DK_BUILD_VERSION_REF=V2_4; DK_BUILD_VERSION_MAJMIN=2.4 ;;
+            2.5) DK_BUILD_VERSION_REF=V2_5; DK_BUILD_VERSION_MAJMIN=2.5 ;;
+            *) echo "::error title=⛔ error hint::Unsupported version '${{ env.INPUTVERSION }}'. Supported versions: 2.4, 2.5"; exit 1 ;;
+          esac
+          echo "dk_build_version_ref=${DK_BUILD_VERSION_REF}" | tee -a "$GITHUB_OUTPUT"
+          echo "dk_build_version_majmin=${DK_BUILD_VERSION_MAJMIN}" | tee -a "$GITHUB_OUTPUT"
+
+          # default 'id' will be github.repository + '@' + github.ref_name except
+          # github.repository (owner/repo) will not have the "owner/" prefix.
+          # ex. 'repo@1.2.3'
+          DK_ID='${{ env.INPUTID }}'
+          if [ -z "$DK_ID" ]; then
+            DK_ID_REPOSITORY="${{ github.repository }}"
+            DK_ID="${DK_ID_REPOSITORY#*/}@${{ github.ref_name }}"
+          fi
+
+          # split id into library_id and version
+          if [[ "$DK_ID}" != *@* ]]; then
+            echo "::error title=⛔ error hint::Invalid id '${{ env.INPUTID }}'. Must be of the form SomeLibrary_Unit@Version, like CommonsBase_Std@1.0.1"
+            exit 1
+          fi
+          DK_ID_LIBRARY="${DK_ID%@*}"
+          DK_ID_VERSION="${DK_ID#*@}"
+          if [[ -z "$DK_ID_LIBRARY" || -z "$DK_ID_VERSION" ]]; then
+            echo "::error title=⛔ error hint::Invalid id '${{ env.INPUTID }}'. Must be of the form SomeLibrary_Unit@Version, like CommonsBase_Std@1.0.1"
+            exit 1
+          fi
+
+          # validate version is valid semver using suggested semver regex
+          # from https://semver.org/#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string
+          if command -v perl; then
+            if ! perl -e 'exit 1 unless shift =~ /^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;' "$DK_ID_VERSION"; then
+              echo "::error title=⛔ error hint::Invalid version '${DK_ID_VERSION}' in id '${DK_ID}'. Version must be valid semver, like 1.0.1 or 1.0.0+some-build-metadata"
+              exit 1
+            fi
+          else
+            echo "::warning title=⚠️ warning hint::perl not found. Skipping semver validation for version '${DK_ID_VERSION}' in id '${DK_ID}'. Version must be valid semver, like 1.0.1 or 1.0.0+some-build-metadata"
+          fi
+
+          # strip build metadata from version
+          DK_ID_VERSION="${DK_ID_VERSION%%+*}"
+
+          echo "dk_id_library=${DK_ID_LIBRARY}" | tee -a "$GITHUB_OUTPUT"
+          echo "dk_id_version=${DK_ID_VERSION}" | tee -a "$GITHUB_OUTPUT"
+
+          # convert version like 1.2.3 to underscore separated major and minor version like 1_2
+          DK_ID_VERSION_MAJMINUNDER=$(printf "%s" "${DK_ID_VERSION}" | awk -F. '{print $1"_"$2}')
+          echo "dk_id_version_majminunder=${DK_ID_VERSION_MAJMINUNDER}" | tee -a "$GITHUB_OUTPUT"
+
+      # --------- C.1: Get dksrc/dk0 ----------
+
+      - name: Get dksrc/dk0
+        if: >
+          inputs.experimental-dk-owner != ''
+          && (inputs.experimental-mlfront-ref == '' || inputs.experimental-mlfront-ref == 'false')
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.experimental-dk-owner }}/dk
+          path: dksrc
+          ref: ${{ steps.dk-vars.outputs.dk_build_version_ref }}
+
+      - name: Get dksrc/dk0
+        if: >
+          inputs.experimental-dk-owner == ''
+          && (inputs.experimental-mlfront-ref == '' || inputs.experimental-mlfront-ref == 'false')
+        uses: actions/checkout@v6
+        with:
+          repository: diskuv/dk
+          path: dksrc
+          ref: ${{ steps.dk-vars.outputs.dk_build_version_ref }}
+
+      # --------- C.2: Install dksrc/dk0 ----------
+      - name: Set-up OCaml
+        if: inputs.experimental-mlfront-ref != '' && inputs.experimental-mlfront-ref != 'false'
+        uses: ocaml/setup-ocaml@57d9aa353e8d39677b1b9fc39637d48f27fe4a91 # v3
+        with:
+          ocaml-compiler: 5.4.0
+          #   (synced from OCAML_OPAM_REPOSITORY in MlFront/.gitlab-ci.yml)
+          #   2025-11-08. dkml-c-probe.3.2.0
+          #   2025-10-10. initial
+          opam-repositories: |
+            default: git+https://github.com/ocaml/opam-repository.git#88e773ad9e5a6ed02fb2c1fab59e649624ac9db4
+          cache-prefix: dk-distribute-v2
+      - name: Get MlFront
+        if: inputs.experimental-mlfront-ref != '' && inputs.experimental-mlfront-ref != 'false'
+        shell: bash
+        #   `git commit` required since `opam pin`` uses git+file://
+        run: |
+          git clone https://gitlab.com/dkml/build-tools/MlFront.git
+          cd MlFront
+          git reset --hard '${{ inputs.experimental-mlfront-ref }}'
+
+          sh ci/localize-pristine.sh
+          git config user.email "nobody@example.com"
+          git config user.name "nobody"
+          git add --force dune-project *.opam
+          git commit -m "pristine"
+
+          printf 'opam version: '
+          opam --version
+      - name: Pin Latest MlFront
+        if: inputs.experimental-mlfront-ref != '' && inputs.experimental-mlfront-ref != 'false'
+        shell: bash
+        run: cd MlFront && opam pin . --no-action -y
+      - name: Install MlFront_Exec
+        if: inputs.experimental-mlfront-ref != '' && inputs.experimental-mlfront-ref != 'false'
+        shell: bash
+        # Use `./MlFront_Exec.opam` not `MlFront_Exec` to process pin-depends:[]
+        run: cd MlFront && opam install ./MlFront_Exec.opam -y
+      - name: Create dksrc/dk0 Wrapper on Unix
+        if: runner.os != 'Windows' && inputs.experimental-mlfront-ref != '' && inputs.experimental-mlfront-ref != 'false'
+        shell: bash
+        run: |
+          install -d dksrc
+          printf '#!/bin/sh\nset -euf\nopam exec -- dk0 "$@"\n' | tee dksrc/dk0
+          chmod +x dksrc/dk0
+      - name: Create dksrc\dk0.cmd Wrapper on Windows
+        if: runner.os == 'Windows' && inputs.experimental-mlfront-ref != '' && inputs.experimental-mlfront-ref != 'false'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dksrc -Force | Out-Null
+          $content = "@echo off`nsetlocal enabledelayedexpansion`nopam exec -- dk0 %*`n"
+          Set-Content -Path dksrc\dk0.cmd -Value $content -Encoding ASCII
+
+      # --------- D.1 Download ----------
+
+      - name: Download distribution artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: dk-dist
+          pattern: distribution-*
+          merge-multiple: true
+
+      # --------- G.1 Distribute ----------
+
+      - name: Combine on Unix
+        env:
+            INPUTOPTIONS: ${{ inputs.options }}
+        shell: bash
+        if: runner.os != 'Windows'
+        # --errors-plain option helps cross-platform CI caches since the cache+data is under the project t/ subdirectory
+        run: |
+          echo "dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
+          dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
+
+          du -sh dk-dist/*
+
+      - name: Combine on Windows
+        env:
+            INPUTOPTIONS: ${{ inputs.options }}
+        shell: pwsh
+        if: runner.os == 'Windows'
+        run: |
+          Write-Host "dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
+          dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
+          if ($LASTEXITCODE -ne 0) {
+            throw "dk0 combine failed with exit code $LASTEXITCODE"
+          }
+
+          Get-ChildItem -Directory dk-dist | ForEach-Object {
+              $size = (Get-ChildItem $_.FullName -Recurse -File | Measure-Object -Property Length -Sum).Sum
+              $sizeGB = [math]::Round($size / 1GB, 2)
+              Write-Output "$($sizeGB) GB`t$($_.Name)"
+          }
+
+      - name: Document Import Command
+        shell: bash
+        run: |
+          # parse options
+          tag='${{ github.ref_name }}'
+          repository='${{ github.repository }}'
+          capture() {
+            printf "%s\n" "$@" >> "$GITHUB_STEP_SUMMARY"
+            printf "%s\n" "$@" >> '.dist-CHANGELOG.txt'
+          }
+          if [ -z "$repository" ]; then
+            echo "Error: repository is required" >&2
+            usage
+          fi
+          if [ -z "$tag" ]; then
+            echo "Error: tag is required" >&2
+            usage
+          fi
+
+          capture "### Importing this package version"
+          capture ''
+          capture '```'
+
+          printf "./dk0 add github-l2 %s@%s\n" "$repository" "$tag"
+          capture "./dk0 add github-l2 ${repository}@${tag}"
+          capture '```'
+
+          capture ''
+          capture "### Importing the latest package version"
+          capture ''
+          capture '```'
+
+          printf "./dk0 add github-l2 %s\n" "$repository"
+          capture "./dk0 add github-l2 ${repository}"
+          capture '```'
