@@ -233,15 +233,20 @@ runs:
 
       - name: Distribute on Unix
         env:
-            DK_BUILD_PUBKEY: "${{ inputs.pubkey }}"
-            DK_BUILD_SECKEY: "${{ inputs.seckey }}"
-            INPUTOPTIONS: ${{ inputs.options }}
-            INPUTDISTSCRIPT: ${{ inputs.distscript }}
-            INPUTSTANDALONE: ${{ inputs.standalone }}
+          GH_TOKEN: ${{ github.token }}
+          DK_BUILD_PUBKEY: "${{ inputs.pubkey }}"
+          DK_BUILD_SECKEY: "${{ inputs.seckey }}"
+          INPUTOPTIONS: ${{ inputs.options }}
+          INPUTDISTSCRIPT: ${{ inputs.distscript }}
+          INPUTSTANDALONE: ${{ inputs.standalone }}
         shell: bash
         if: runner.os != 'Windows'
         # --errors-plain option helps cross-platform CI caches since the cache+data is under the project t/ subdirectory
         run: |
+          rm -rf etc/dk/i
+          echo "dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD update"
+          dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD update
+
           echo "dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ env.INPUTDISTSCRIPT }}"
           dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ env.INPUTDISTSCRIPT }}
 
@@ -264,14 +269,19 @@ runs:
 
       - name: Distribute on Windows
         env:
-            DK_BUILD_PUBKEY: "${{ inputs.pubkey }}"
-            DK_BUILD_SECKEY: "${{ inputs.seckey }}"
-            INPUTOPTIONS: ${{ inputs.options }}
-            INPUTDISTSCRIPT: ${{ inputs.distscript }}
-            INPUTSTANDALONE: ${{ inputs.standalone }}
+          GH_TOKEN: ${{ github.token }}
+          DK_BUILD_PUBKEY: "${{ inputs.pubkey }}"
+          DK_BUILD_SECKEY: "${{ inputs.seckey }}"
+          INPUTOPTIONS: ${{ inputs.options }}
+          INPUTDISTSCRIPT: ${{ inputs.distscript }}
+          INPUTSTANDALONE: ${{ inputs.standalone }}
         shell: pwsh
         if: runner.os == 'Windows'
         run: |
+          if (Test-Path etc/dk/i) { Remove-Item -Recurse -Force etc/dk/i }
+          Write-Host "dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD update"
+          dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD update
+
           Write-Host "dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ env.INPUTDISTSCRIPT }}"
           dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_id_library }}-${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ env.INPUTDISTSCRIPT }}
           if ($LASTEXITCODE -ne 0) {
