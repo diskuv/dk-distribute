@@ -215,11 +215,11 @@ runs:
         if: inputs.experimental-mlfront-ref != '' && inputs.experimental-mlfront-ref != 'false'
         shell: bash
         run: cd MlFront && opam pin . --no-action -y
-      - name: Install MlFront_Exec
+      - name: Install DkZero_Exec
         if: inputs.experimental-mlfront-ref != '' && inputs.experimental-mlfront-ref != 'false'
         shell: bash
-        # Use `./MlFront_Exec.opam` not `MlFront_Exec` to process pin-depends:[]
-        run: cd MlFront && opam install ./MlFront_Exec.opam -y
+        # Use `./DkZero_Exec.opam` not `DkZero_Exec` to process pin-depends:[]
+        run: cd MlFront && opam install ./DkZero_Exec.opam -y
       - name: Create dksrc/dk0 Wrapper on Unix
         if: runner.os != 'Windows' && inputs.experimental-mlfront-ref != '' && inputs.experimental-mlfront-ref != 'false'
         shell: bash
