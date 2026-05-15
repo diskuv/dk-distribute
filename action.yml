@@ -189,10 +189,11 @@ runs:
           ocaml-compiler: 5.4.0
           opam-disable-sandboxing: ${{ steps.check-bwrap.outputs.disable_sandboxing == 'true' }}
           #   (synced from OCAML_OPAM_REPOSITORY in MlFront/.gitlab-ci.yml)
+          #   2025-12-18. fmlib_parse.0.6.2
           #   2025-11-08. dkml-c-probe.3.2.0
           #   2025-10-10. initial
           opam-repositories: |
-            default: git+https://github.com/ocaml/opam-repository.git#88e773ad9e5a6ed02fb2c1fab59e649624ac9db4
+            default: git+https://github.com/ocaml/opam-repository.git#93d44806c4a413399879355cb22fb53ba00a1ba5
           cache-prefix: dk-distribute-v2
       - name: Get MlFront
         if: inputs.experimental-mlfront-ref != '' && inputs.experimental-mlfront-ref != 'false'
