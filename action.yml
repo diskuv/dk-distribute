@@ -162,11 +162,31 @@ runs:
           ref: ${{ steps.dk-vars.outputs.dk_build_version_ref }}
 
       # --------- C.2: Install dksrc/dk0 ----------
+      - name: Check if bwrap available for sandboxing
+        if: inputs.experimental-mlfront-ref != '' && inputs.experimental-mlfront-ref != 'false'
+        shell: bash
+        # opam sandboxing means bubblewrap must be on Linux runners, but the manylinux images which
+        # provide old glibc versions do not have bubblewrap.
+        # So make the availability of bwrap be a variable for the next "Set-up OCaml" step.
+        run: |
+          if "${{ runner.os }}" != "Linux" ; then
+            echo "Non-Linux OS detected, skipping bwrap check."
+            echo "disable_sandboxing=false" | tee -a "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if command -v bwrap > /dev/null 2>&1; then
+            echo "bwrap is available for sandboxing"
+            echo "disable_sandboxing=false" | tee -a "$GITHUB_OUTPUT"
+          else
+            echo "bwrap is not available."
+            echo "disable_sandboxing=true" | tee -a "$GITHUB_OUTPUT"
+          fi
       - name: Set-up OCaml
         if: inputs.experimental-mlfront-ref != '' && inputs.experimental-mlfront-ref != 'false'
         uses: ocaml/setup-ocaml@57d9aa353e8d39677b1b9fc39637d48f27fe4a91 # v3
         with:
           ocaml-compiler: 5.4.0
+          opam-disable-sandboxing: ${{ steps.check-bwrap.outputs.disable_sandboxing == 'true' }}
           #   (synced from OCAML_OPAM_REPOSITORY in MlFront/.gitlab-ci.yml)
           #   2025-11-08. dkml-c-probe.3.2.0
           #   2025-10-10. initial
