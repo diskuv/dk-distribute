@@ -163,13 +163,14 @@ runs:
 
       # --------- C.2: Install dksrc/dk0 ----------
       - name: Check if bwrap available for sandboxing
+        id: check-bwrap
         if: inputs.experimental-mlfront-ref != '' && inputs.experimental-mlfront-ref != 'false'
         shell: bash
         # opam sandboxing means bubblewrap must be on Linux runners, but the manylinux images which
         # provide old glibc versions do not have bubblewrap.
         # So make the availability of bwrap be a variable for the next "Set-up OCaml" step.
         run: |
-          if "${{ runner.os }}" != "Linux" ; then
+          if [ "${{ runner.os }}" != "Linux" ]; then
             echo "Non-Linux OS detected, skipping bwrap check."
             echo "disable_sandboxing=false" | tee -a "$GITHUB_OUTPUT"
             exit 0
