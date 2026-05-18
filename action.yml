@@ -42,7 +42,7 @@ inputs: # Max 25 inputs is practical limit. https://github.com/orgs/community/di
     required: false
     default: 'diskuv'
   experimental-mlfront-ref:
-    description: 'Use the bleeding edge of https://gitlab.com/dkml/build-tools/MlFront.git. Do not use for production.'
+    description: 'Use the bleeding edge of https://gitlab.com/dkml/build-tools/MlFront.git. Do not use for production. Do not mix experimental MlFront with non-experimental in a multi-job workflow since version checks will fail in "combine" step.'
     required: false
     default: 'false'
   standalone:

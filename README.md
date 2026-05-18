@@ -146,3 +146,6 @@ However, the following will build the [reference build system](https://gitlab.co
 Building the reference system takes time. And the reference system builds slower than `dk`.
 
 Do not use for production. This is meant only for troubleshooting issues or in high-compliance situations.
+
+Do not mix `experimental-mlfront-ref` with non-`experimental-mlfront-ref` in the same workflow. The version
+checks in the `combine` job will fail.
