@@ -100,6 +100,28 @@ runs:
           DK_ID_VERSION_MAJMINUNDER=$(printf "%s" "${DK_ID_VERSION}" | awk -F. '{print $1"_"$2}')
           echo "dk_id_version_majminunder=${DK_ID_VERSION_MAJMINUNDER}" | tee -a "$GITHUB_OUTPUT"
 
+      # --------- Linux static toolchain ----------
+
+      - name: Prepare Linux static toolchain
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        env:
+          INPUTDISTSCRIPT: ${{ inputs.distscript }}        
+        run: |
+          if command -v dnf > /dev/null 2>&1; then
+            pkgs=(glibc-static)
+            case "${{ env.INPUTDISTSCRIPT }}" in
+              dist-Linux_x86_64.u) ;;
+              dist-Linux_aarch64.u) ;;
+              dist-Linux_armv7.u) ;;
+              dist-Linux_x86.u)
+                pkgs+=(glibc-static.i686 glibc-devel.i686 libgcc.i686 libstdc++.i686 gcc-toolset-14-libstdc++-devel.i686)
+                ;;
+              *) echo "::error title=⛔ error hint::Unsupported distribution script '${{ env.INPUTDISTSCRIPT }}' for Linux. Supported Linux distribution scripts: dist-Linux_x86_64.u, dist-Linux_aarch64.u, dist-Linux_armv7.u, dist-Linux_x86.u"; exit 1 ;;
+            esac
+            dnf install -y "${pkgs[@]}"
+          fi
+
       # --------- C.1: Get dksrc/dk0 ----------
 
       - name: Get dksrc/dk0

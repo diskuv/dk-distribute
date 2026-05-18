@@ -139,6 +139,28 @@ runs:
           echo "::error title=⛔ error hint::Distribution keypair missing. You need to populate 'distribute_${{ steps.dk-vars.outputs.dk_id_version_majminunder }}_pubkey' and 'distribute_${{ steps.dk-vars.outputs.dk_id_version_majminunder }}_seckey' in the Secrets for your workflow. See more in https://docs.github.com/en/actions/security-guides/encrypted-secrets. Then set the 'pubkey' and 'seckey' inputs in the 'with:' block of the workflow step, like the following on two lines: ${{ format('pubkey: {0}{1}{1} secrets.distribute_{3}_pubkey {2}{2} seckey: {0}{1}{1} secrets.distribute_{3}_seckey {2}{2}', '\$', '{', '}', steps.dk-vars.outputs.dk_id_version_majminunder) }}"
           exit 1
 
+      # --------- Linux static toolchain ----------
+
+      - name: Prepare Linux static toolchain
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        env:
+          INPUTDISTSCRIPT: ${{ inputs.distscript }}        
+        run: |
+          if command -v dnf > /dev/null 2>&1; then
+            pkgs=(glibc-static)
+            case "${{ env.INPUTDISTSCRIPT }}" in
+              dist-Linux_x86_64.u) ;;
+              dist-Linux_aarch64.u) ;;
+              dist-Linux_armv7.u) ;;
+              dist-Linux_x86.u)
+                pkgs+=(glibc-static.i686 glibc-devel.i686 libgcc.i686 libstdc++.i686 gcc-toolset-14-libstdc++-devel.i686)
+                ;;
+              *) echo "::error title=⛔ error hint::Unsupported distribution script '${{ env.INPUTDISTSCRIPT }}' for Linux. Supported Linux distribution scripts: dist-Linux_x86_64.u, dist-Linux_aarch64.u, dist-Linux_armv7.u, dist-Linux_x86.u"; exit 1 ;;
+            esac
+            dnf install -y "${pkgs[@]}"
+          fi
+
       # --------- C.1: Get dksrc/dk0 ----------
 
       - name: Get dksrc/dk0
