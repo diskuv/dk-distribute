@@ -161,7 +161,7 @@ runs:
               dist-Linux_x86.u,*|*,Linux_x86)
                 pkgs+=(glibc-static.i686 glibc-devel.i686 libgcc.i686 libstdc++.i686 gcc-toolset-14-libstdc++-devel.i686)
                 ;;
-              *) echo "::error title=⛔ error hint::Unsupported distribution script '${{ env.INPUTDISTSCRIPT }}' for Linux. Supported Linux distribution scripts: dist-Linux_x86_64.u, dist-Linux_arm64.u, dist-Linux_armv7.u, dist-Linux_x86.u"; exit 1 ;;
+              *) echo "::error title=⛔ error hint::Unsupported distribution script '${{ env.INPUTDISTSCRIPT }}' for Linux. Linux distribution scripts 'dist-Linux_x86_64.u', 'dist-Linux_arm64.u', 'dist-Linux_armv7.u' or 'dist-Linux_x86.u' or Linux execution-abi 'Linux_x86_64', 'Linux_arm64' or 'Linux_x86' supported."; exit 1 ;;
             esac
             dnf install -y "${pkgs[@]}"
           fi
