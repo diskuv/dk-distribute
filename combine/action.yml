@@ -32,6 +32,9 @@ inputs:
     description: 'Use the bleeding edge of https://gitlab.com/dkml/build-tools/MlFront.git. Do not use for production.'
     required: false
     default: 'false'
+  execution-abi:
+    description: 'Set the execution_abi wildcard so executables (compilers, etc.) are chosen to match the ABI.'
+    required: false
 runs:
   using: composite
   steps:
@@ -47,7 +50,6 @@ runs:
         shell: bash
         env:
           INPUTVERSION: ${{ inputs.dk-version }}
-          INPUTOPTIONS: ${{ inputs.options }}
           INPUTID: ${{ inputs.id }}
         run: |
           case "${{ env.INPUTVERSION }}" in
@@ -106,15 +108,18 @@ runs:
         if: ${{ runner.os == 'Linux' }}
         shell: bash
         env:
-          INPUTDISTSCRIPT: ${{ inputs.distscript }}        
+          INPUTDISTSCRIPT: ${{ inputs.distscript }}
+          EXECUTION_ABI: ${{ inputs.execution-abi }}
         run: |
           if command -v dnf > /dev/null 2>&1; then
             pkgs=(glibc-static)
-            case "${{ env.INPUTDISTSCRIPT }}" in
-              dist-Linux_x86_64.u) ;;
-              dist-Linux_arm64.u) ;;
-              dist-Linux_armv7.u) ;;
-              dist-Linux_x86.u)
+            case "${{ env.INPUTDISTSCRIPT }},${{ env.EXECUTION_ABI }}" in
+              dist-Linux_x86_64.u,*) ;;
+              dist-Linux_arm64.u,*) ;;
+              dist-Linux_armv7.u,*) ;;
+              *,Linux_x86_64) ;;
+              *,Linux_arm64) ;;
+              dist-Linux_x86.u,*|*,Linux_x86)
                 pkgs+=(glibc-static.i686 glibc-devel.i686 libgcc.i686 libstdc++.i686 gcc-toolset-14-libstdc++-devel.i686)
                 ;;
               *) echo "::error title=⛔ error hint::Unsupported distribution script '${{ env.INPUTDISTSCRIPT }}' for Linux. Supported Linux distribution scripts: dist-Linux_x86_64.u, dist-Linux_arm64.u, dist-Linux_armv7.u, dist-Linux_x86.u"; exit 1 ;;
@@ -232,7 +237,7 @@ runs:
 
       - name: Combine on Unix
         env:
-            INPUTOPTIONS: ${{ inputs.options }}
+            INPUTOPTIONS: ${{ inputs.options }} ${{ inputs.execution-abi && format('--execution-abi {0}', inputs.execution-abi) }}
         shell: bash
         if: runner.os != 'Windows'
         # --errors-plain option helps cross-platform CI caches since the cache+data is under the project t/ subdirectory
@@ -244,7 +249,7 @@ runs:
 
       - name: Combine on Windows
         env:
-            INPUTOPTIONS: ${{ inputs.options }}
+            INPUTOPTIONS: ${{ inputs.options }} ${{ inputs.execution-abi && format('--execution-abi {0}', inputs.execution-abi) }}
         shell: pwsh
         if: runner.os == 'Windows'
         run: |
