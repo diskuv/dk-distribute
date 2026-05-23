@@ -50,7 +50,10 @@ inputs: # Max 25 inputs is practical limit. https://github.com/orgs/community/di
     required: false
     default: 'false'
   execution-abi:
-    description: 'Set the execution_abi wildcard so executables (compilers, etc.) are chosen to match the ABI.'
+    description: 'Set the execution_abi wildcard so executables (compilers, etc.) are selected that run on the ABI.'
+    required: false
+  target-abi:
+    description: 'Set the target_abi wildcard so executables and libraries are generated for the ABI.'
     required: false
 runs:
   using: composite
@@ -148,11 +151,11 @@ runs:
         shell: bash
         env:
           INPUTDISTSCRIPT: ${{ inputs.distscript }}
-          EXECUTION_ABI: ${{ inputs.execution-abi }}
+          TARGET_ABI: ${{ inputs.target-abi }}
         run: |
           if command -v dnf > /dev/null 2>&1; then
             pkgs=(glibc-static)
-            case "${{ env.INPUTDISTSCRIPT }},${{ env.EXECUTION_ABI }}" in
+            case "${{ env.INPUTDISTSCRIPT }},${{ env.TARGET_ABI }}" in
               dist-Linux_x86_64.u,*) ;;
               dist-Linux_arm64.u,*) ;;
               dist-Linux_armv7.u,*) ;;
@@ -285,7 +288,10 @@ runs:
           GH_TOKEN: ${{ github.token }}
           DK_BUILD_PUBKEY: "${{ inputs.pubkey }}"
           DK_BUILD_SECKEY: "${{ inputs.seckey }}"
-          INPUTOPTIONS: ${{ inputs.options }} ${{ inputs.execution-abi && format('--execution-abi {0}', inputs.execution-abi) }}
+          INPUTOPTIONS: >-
+            ${{ inputs.options }}
+            ${{ inputs.execution-abi && format('--execution-abi {0}', inputs.execution-abi) }}
+            ${{ inputs.target-abi && format('--target-abi {0}', inputs.target-abi) }}
           INPUTDISTSCRIPT: ${{ inputs.distscript }}
           INPUTSTANDALONE: ${{ inputs.standalone }}
         shell: bash
@@ -321,7 +327,10 @@ runs:
           GH_TOKEN: ${{ github.token }}
           DK_BUILD_PUBKEY: "${{ inputs.pubkey }}"
           DK_BUILD_SECKEY: "${{ inputs.seckey }}"
-          INPUTOPTIONS: ${{ inputs.options }} ${{ inputs.execution-abi && format('--execution-abi {0}', inputs.execution-abi) }}
+          INPUTOPTIONS: >-
+            ${{ inputs.options }}
+            ${{ inputs.execution-abi && format('--execution-abi {0}', inputs.execution-abi) }}
+            ${{ inputs.target-abi && format('--target-abi {0}', inputs.target-abi) }}
           INPUTDISTSCRIPT: ${{ inputs.distscript }}
           INPUTSTANDALONE: ${{ inputs.standalone }}
         shell: pwsh
