@@ -48,7 +48,7 @@ runs:
           echo "::error title=⛔ error hint::Support Linux, Windows, and macOS Only"
           exit 1
 
-      - name: Set DK variables
+      - name: Set dk-distribute/combine variables
         id: dk-vars
         shell: bash
         env:
@@ -61,7 +61,6 @@ runs:
             *) echo "::error title=⛔ error hint::Unsupported version '${{ env.INPUTVERSION }}'. Supported versions: 2.4, 2.5"; exit 1 ;;
           esac
           echo "dk_build_version_ref=${DK_BUILD_VERSION_REF}" | tee -a "$GITHUB_OUTPUT"
-          echo "dk_build_version_majmin=${DK_BUILD_VERSION_MAJMIN}" | tee -a "$GITHUB_OUTPUT"
 
           # default 'id' will be github.repository + '@' + github.ref_name except
           # github.repository (owner/repo) will not have the "owner/" prefix.
@@ -84,26 +83,7 @@ runs:
             exit 1
           fi
 
-          # validate version is valid semver using suggested semver regex
-          # from https://semver.org/#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string
-          if command -v perl; then
-            if ! perl -e 'exit 1 unless shift =~ /^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;' "$DK_ID_VERSION"; then
-              echo "::error title=⛔ error hint::Invalid version '${DK_ID_VERSION}' in id '${DK_ID}'. Version must be valid semver, like 1.0.1 or 1.0.0+some-build-metadata"
-              exit 1
-            fi
-          else
-            echo "::warning title=⚠️ warning hint::perl not found. Skipping semver validation for version '${DK_ID_VERSION}' in id '${DK_ID}'. Version must be valid semver, like 1.0.1 or 1.0.0+some-build-metadata"
-          fi
-
-          # strip build metadata from version
-          DK_ID_VERSION="${DK_ID_VERSION%%+*}"
-
           echo "dk_id_library=${DK_ID_LIBRARY}" | tee -a "$GITHUB_OUTPUT"
-          echo "dk_id_version=${DK_ID_VERSION}" | tee -a "$GITHUB_OUTPUT"
-
-          # convert version like 1.2.3 to underscore separated major and minor version like 1_2
-          DK_ID_VERSION_MAJMINUNDER=$(printf "%s" "${DK_ID_VERSION}" | awk -F. '{print $1"_"$2}')
-          echo "dk_id_version_majminunder=${DK_ID_VERSION_MAJMINUNDER}" | tee -a "$GITHUB_OUTPUT"
 
       # --------- Linux static toolchain ----------
 
