@@ -158,7 +158,7 @@ runs:
         shell: bash
         env:
           INPUTDISTSCRIPT: ${{ inputs.distscript }}
-          TARGET_ABI: ${{ inputs.target-abi }}
+          TARGET_ABI: ${{ inputs.target-abi || inputs.execution-abi }}
         run: |
           if command -v dnf > /dev/null 2>&1; then
             pkgs=(glibc-static)
