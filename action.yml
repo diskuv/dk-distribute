@@ -28,7 +28,7 @@ inputs: # Max 25 inputs is practical limit. https://github.com/orgs/community/di
     description: 'Your secret key for the distribution version.'
     required: false # Give nice error message if empty in `steps`
   distscript:
-    description: 'The location of the distribution script file or directory. Example: etc/dk/v/CommonsBase_LLVM/dist-win32.t'
+    description: 'The location of the distribution scripts. Do not add /run.t or /run.u to distribution script directories that contain run.t or run.u. Examples: dist-win32.u, dist/Linux_x86_64.u'
     required: false # true does nothing
   use-cache:
     description: 'Whether to cache value stores and trace stores between runs.'
@@ -69,7 +69,14 @@ runs:
         if: inputs.distscript == ''
         shell: bash
         run: |
-          echo "::error title=⛔ error hint::Missing required input. You need to set the 'distscript' input in the `with:` block of the workflow step."
+          echo "::error title=⛔ error hint::Missing required input. Set the 'distscript' input."
+          exit 1
+
+      - name: Check Distribution Script Directory
+        if: inputs.distscript != '' && (endsWith(inputs.distscript, '/run.t') || endsWith(inputs.distscript, '/run.u'))
+        shell: bash
+        run: |
+          echo "::error title=⛔ error hint::The distribution script should not end with /run.t or /run.u. Set the 'distscript' input to the directory containing run.t or run.u, like 'dist-Linux_x86_64.u', not 'dist-Linux_x86_64.u/run.t'."
           exit 1
 
       - name: Set dk-distribute variables
@@ -157,21 +164,16 @@ runs:
         if: ${{ runner.os == 'Linux' }}
         shell: bash
         env:
-          INPUTDISTSCRIPT: ${{ inputs.distscript }}
           TARGET_ABI: ${{ inputs.target-abi || inputs.execution-abi }}
         run: |
           if command -v dnf > /dev/null 2>&1; then
             pkgs=(glibc-static)
-            case "${{ env.INPUTDISTSCRIPT }},${{ env.TARGET_ABI }}" in
-              dist-Linux_x86_64.u,*) ;;
-              dist-Linux_arm64.u,*) ;;
-              dist-Linux_armv7.u,*) ;;
-              *,Linux_x86_64) ;;
-              *,Linux_arm64) ;;
-              dist-Linux_x86.u,*|*,Linux_x86)
+            case "${{ env.TARGET_ABI }}" in
+              Linux_x86_64) ;;
+              Linux_arm64) ;;
+              Linux_x86)
                 pkgs+=(glibc-static.i686 glibc-devel.i686 libgcc.i686 libstdc++.i686 gcc-toolset-14-libstdc++-devel.i686)
                 ;;
-              *) echo "::error title=⛔ error hint::Unsupported distribution script '${{ env.INPUTDISTSCRIPT }}' for Linux. Linux distribution scripts 'dist-Linux_x86_64.u', 'dist-Linux_arm64.u', 'dist-Linux_armv7.u' or 'dist-Linux_x86.u' or Linux execution-abi 'Linux_x86_64', 'Linux_arm64' or 'Linux_x86' supported."; exit 1 ;;
             esac
             dnf install -y "${pkgs[@]}"
           fi
@@ -309,7 +311,7 @@ runs:
           echo "dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD update"
           dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD update
 
-          echo "dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ env.INPUTDISTSCRIPT }}"
+          echo "dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' "${{ env.INPUTDISTSCRIPT }}""
           dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ env.INPUTDISTSCRIPT }}
 
           if [ "${{ env.INPUTSTANDALONE }}" == "true" ]; then
@@ -435,8 +437,8 @@ runs:
         if: inputs.standalone != 'true'
         uses: actions/upload-artifact@v7
         with:
-          # distribution-<distscript>[-<targetabi>
-          name: distribution-${{ inputs.distscript }}${{ inputs.target-abi && format('-{0}', inputs.target-abi) }}
+          # distribution-<part>. That is, distribution-<basename(distscript)>[-<targetabi>]
+          name: distribution-${{ steps.dk-vars.outputs.dk_dist_part }}
           path: dk-dist/
 
       # --------- X.1 Cache Save ----------
