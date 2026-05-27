@@ -53,6 +53,7 @@ jobs:
         with:
             pubkey: ${{ secrets.distribute_1_0_pubkey }} # change based on MAJOR.MINOR
             seckey: ${{ secrets.distribute_1_0_seckey }} # change based on MAJOR.MINOR
+            short-build-dir: ${{ runner.os == 'Windows' && 'C:\b' || '' }}
             use-cache: true
             distscript: ${{ matrix.distscript }}
 
@@ -126,6 +127,22 @@ You can opt in to caching by passing `'true'` to the `use-cache` input:
   uses: diskuv/dk-distribute@v2
   with:
     use-cache: 'true'
+```
+
+## Windows short build directory
+
+Large Windows distributions can hit the default 260-character `MAX_PATH` limit under the standard GitHub Actions checkout path. Set `short-build-dir` to an absolute path like `C:\b` to have the action delete and recreate that directory, create a workspace junction at `C:\b\w` that points at the original checkout, change the current directory to `C:\b\w`, and run dk with `--keys-dir C:\b\k --data-dir C:\b\d --cache-dir C:\b\c`.
+
+The junction is needed because shortening only the dk data/cache/key directories does not shorten workspace-relative paths like `etc\dk\i`, `dist-any.u`, and `dk-dist`. Running from `C:\b\w` shortens both the workspace path and the dk store paths.
+
+The action removes `short-build-dir` before recreating it, so a leftover `C:\b\w` junction from an earlier run on the same machine is deleted first. On GitHub-hosted runners each job normally gets a fresh machine, so another GitHub job should not leave that behind. On self-hosted or otherwise shared runners, use a job-unique short directory if concurrent jobs could collide.
+
+```yaml
+- name: Distribute Modules
+  uses: diskuv/dk-distribute@v2
+  with:
+    short-build-dir: ${{ runner.os == 'Windows' && 'C:\b' || '' }}
+    distscript: ${{ matrix.distscript }}
 ```
 
 ## Experimental Features

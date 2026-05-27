@@ -37,6 +37,10 @@ inputs: # Max 25 inputs is practical limit. https://github.com/orgs/community/di
   options:
     description: 'Options to pass to `dk` and/or `dk0`.'
     required: false
+  short-build-dir:
+    description: 'Optional absolute Windows path like C:\b. When set on Windows, the directory is deleted and recreated before use, a workspace junction is created at <dir>\w, and dk uses <dir>\k, <dir>\d and <dir>\c for keys, data and cache.'
+    required: false
+    default: ''
   experimental-dk-owner:
     description: "The 'dk' repository owner's username. The GitHub repository would then be github.com/<owner>/dk.git. Defaults to 'diskuv'. Do not use for production."
     required: false
@@ -275,6 +279,44 @@ runs:
           $content = "@echo off`nsetlocal enabledelayedexpansion`nopam exec -- dk0 %*`n"
           Set-Content -Path dksrc\dk0.cmd -Value $content -Encoding ASCII
 
+      - name: Prepare Windows short build directory
+        id: prepare-short-build-dir
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          INPUTSHORTBUILDDIR: ${{ inputs.short-build-dir }}
+        run: |
+          $shortDir = "${{ env.INPUTSHORTBUILDDIR }}"
+          if ([string]::IsNullOrWhiteSpace($shortDir)) {
+            "workspace_dir=$env:GITHUB_WORKSPACE" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "dk_extra_options=" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "cache_paths=t" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            exit 0
+          }
+
+          if (-not [System.IO.Path]::IsPathRooted($shortDir)) {
+            throw "The short-build-dir input must be an absolute path. Got: $shortDir"
+          }
+
+          if (Test-Path -LiteralPath $shortDir) {
+            Remove-Item -LiteralPath $shortDir -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $shortDir -Force | Out-Null
+          foreach ($subdir in @('c', 'd', 'k')) {
+            New-Item -ItemType Directory -Path (Join-Path $shortDir $subdir) -Force | Out-Null
+          }
+
+          $workspaceDir = Join-Path $shortDir 'w'
+          New-Item -ItemType Junction -Path $workspaceDir -Target $env:GITHUB_WORKSPACE | Out-Null
+
+          "workspace_dir=$workspaceDir" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "dk_extra_options=--keys-dir $shortDir\\k --data-dir $shortDir\\d --cache-dir $shortDir\\c" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "cache_paths<<EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "$shortDir\\c" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "$shortDir\\d" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "$shortDir\\k" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
       # --------- E.1 Cache Restore ----------
       - name: Cache restore dk stores
         if: inputs.use-cache != ''
@@ -284,7 +326,7 @@ runs:
             # The data stores (and build keys) are safe to share between Windows, macOS and Linux
             enableCrossOsArchive: true
             #   SYNC: must match Cache Save below
-            path: t
+            path: ${{ runner.os == 'Windows' && inputs.short-build-dir != '' && steps.prepare-short-build-dir.outputs.cache_paths || 't' }}
             #   SYNC: must match Cache Save below.
             key: dk-stores-and-keys-x1-${{ steps.dk-vars.outputs.dk_build_version_majmin }}-${{ github.run_id }} # update cache on every run
             restore-keys: dk-stores-and-keys-x1-${{ steps.dk-vars.outputs.dk_build_version_majmin }}             # use latest cache for this version
@@ -336,8 +378,11 @@ runs:
           GH_TOKEN: ${{ github.token }}
           DK_BUILD_PUBKEY: "${{ inputs.pubkey }}"
           DK_BUILD_SECKEY: "${{ inputs.seckey }}"
+          INPUTWORKSPACEDIR: ${{ steps.prepare-short-build-dir.outputs.workspace_dir }}
+          INPUTWINDOWOPTIONS: ${{ steps.prepare-short-build-dir.outputs.dk_extra_options }}
           INPUTOPTIONS: >-
             ${{ inputs.options }}
+            ${{ steps.prepare-short-build-dir.outputs.dk_extra_options }}
             ${{ inputs.execution-abi && format('--execution-abi {0}', inputs.execution-abi) }}
             ${{ inputs.target-abi && format('--target-abi {0}', inputs.target-abi) }}
           INPUTDISTSCRIPT: ${{ inputs.distscript }}
@@ -345,31 +390,37 @@ runs:
         shell: pwsh
         if: runner.os == 'Windows'
         run: |
-          if (Test-Path etc/dk/i) { Remove-Item -Recurse -Force etc/dk/i }
-          Write-Host "dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD update"
-          dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD update
-          if ($LASTEXITCODE -ne 0) {
-            throw "dk0 update failed with exit code $LASTEXITCODE"
-          }
-
-          Write-Host "dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ env.INPUTDISTSCRIPT }}"
-          dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ env.INPUTDISTSCRIPT }}
-          if ($LASTEXITCODE -ne 0) {
-            throw "dk0 distribute failed with exit code $LASTEXITCODE"
-          }
-
-          if ("${{ env.INPUTSTANDALONE }}" -eq "true") {
-            Write-Host "dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
-            dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
+          Push-Location "${{ env.INPUTWORKSPACEDIR }}"
+          try {
+            if (Test-Path etc/dk/i) { Remove-Item -Recurse -Force etc/dk/i }
+            Write-Host "dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD update"
+            dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD update
             if ($LASTEXITCODE -ne 0) {
-              throw "dk0 combine failed with exit code $LASTEXITCODE"
+              throw "dk0 update failed with exit code $LASTEXITCODE"
+            }
+
+            Write-Host "dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ env.INPUTDISTSCRIPT }}"
+            dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' ${{ env.INPUTDISTSCRIPT }}
+            if ($LASTEXITCODE -ne 0) {
+              throw "dk0 distribute failed with exit code $LASTEXITCODE"
+            }
+
+            if ("${{ env.INPUTSTANDALONE }}" -eq "true") {
+              Write-Host "dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
+              dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
+              if ($LASTEXITCODE -ne 0) {
+                throw "dk0 combine failed with exit code $LASTEXITCODE"
+              }
+            }
+
+            Get-ChildItem -Directory dk-dist | ForEach-Object {
+                $size = (Get-ChildItem $_.FullName -Recurse -File | Measure-Object -Property Length -Sum).Sum
+                $sizeGB = [math]::Round($size / 1GB, 2)
+                Write-Output "$($sizeGB) GB`t$($_.Name)"
             }
           }
-
-          Get-ChildItem -Directory dk-dist | ForEach-Object {
-              $size = (Get-ChildItem $_.FullName -Recurse -File | Measure-Object -Property Length -Sum).Sum
-              $sizeGB = [math]::Round($size / 1GB, 2)
-              Write-Output "$($sizeGB) GB`t$($_.Name)"
+          finally {
+            Pop-Location
           }
 
       - name: Query traces on Windows
@@ -377,12 +428,20 @@ runs:
             DK_BUILD_PUBKEY: "${{ inputs.pubkey }}"
             DK_BUILD_SECKEY: "${{ inputs.seckey }}"
             OCAMLRUNPARAM: b
+            INPUTWORKSPACEDIR: ${{ steps.prepare-short-build-dir.outputs.workspace_dir }}
+            INPUTWINDOWOPTIONS: ${{ steps.prepare-short-build-dir.outputs.dk_extra_options }}
         shell: pwsh
         if: runner.os == 'Windows'
         run: |
-          dksrc\dk0.cmd --errors-plain ${{ inputs.options }} --keys-env DK_BUILD query
-          if ($LASTEXITCODE -ne 0) {
-            throw "dk0 query failed with exit code $LASTEXITCODE"
+          Push-Location "${{ env.INPUTWORKSPACEDIR }}"
+          try {
+            dksrc\dk0.cmd --errors-plain ${{ inputs.options }} ${{ env.INPUTWINDOWOPTIONS }} --keys-env DK_BUILD query
+            if ($LASTEXITCODE -ne 0) {
+              throw "dk0 query failed with exit code $LASTEXITCODE"
+            }
+          }
+          finally {
+            Pop-Location
           }
 
       - name: Document Import Command
@@ -450,6 +509,6 @@ runs:
             # The data stores (and build keys) are safe to share between Windows, macOS and Linux
             enableCrossOsArchive: true
             #   SYNC: must match Cache Load above
-            path: t
+            path: ${{ runner.os == 'Windows' && inputs.short-build-dir != '' && steps.prepare-short-build-dir.outputs.cache_paths || 't' }}
             #   SYNC: must match Cache Load above
             key: dk-stores-and-keys-x1-${{ steps.dk-vars.outputs.dk_build_version_majmin }}-${{ github.run_id }} # update cache on every run
