@@ -138,6 +138,16 @@ runs:
           echo "dk_id_library=${DK_ID_LIBRARY}" | tee -a "$GITHUB_OUTPUT"
           echo "dk_id_version=${DK_ID_VERSION}" | tee -a "$GITHUB_OUTPUT"
 
+          # Derive a per-release build number so every release stamps its values
+          # with a unique semver build metadata `bn-<DK_BUILD_NUMBER>`.
+          #
+          # The version's patch component is the release timestamp for dkpkg
+          # repos and is identical across all matrix jobs of a single release.
+          # Fall back to the dotted version (but with dashes) if there is no patch num.
+          DK_BUILD_NUMBER=$(printf "%s" "${DK_ID_VERSION}" | awk -F. '{print $3}')
+          if [ -z "$DK_BUILD_NUMBER" ]; then DK_BUILD_NUMBER="${DK_ID_VERSION//./-}"; fi
+          echo "dk_build_number=${DK_BUILD_NUMBER}" | tee -a "$GITHUB_OUTPUT"
+
           # distribution part. <library>-<distscript>[-<targetabi>]
           #   etc/dk/v/XXX/YYY.u -> YYY
           part=$(basename ${{ env.INPUTDISTSCRIPT }})
@@ -341,6 +351,7 @@ runs:
           DK_BUILD_SECKEY: "${{ inputs.seckey }}"
           INPUTOPTIONS: >-
             ${{ inputs.options }}
+            -n ${{ steps.dk-vars.outputs.dk_build_number }}
             ${{ inputs.execution-abi && format('--execution-abi {0}', inputs.execution-abi) }}
             ${{ inputs.target-abi && format('--target-abi {0}', inputs.target-abi) }}
           INPUTDISTSCRIPT: ${{ inputs.distscript }}
@@ -383,6 +394,7 @@ runs:
           INPUTWINDOWOPTIONS: ${{ steps.prepare-short-build-dir.outputs.dk_extra_options }}
           INPUTOPTIONS: >-
             ${{ inputs.options }}
+            -n ${{ steps.dk-vars.outputs.dk_build_number }}
             ${{ steps.prepare-short-build-dir.outputs.dk_extra_options }}
             ${{ inputs.execution-abi && format('--execution-abi {0}', inputs.execution-abi) }}
             ${{ inputs.target-abi && format('--target-abi {0}', inputs.target-abi) }}
