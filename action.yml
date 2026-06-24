@@ -8,6 +8,18 @@
 #   "⚠️ warning: cache evicted administratively" as a GitHub step for at least a week. You might make
 #   that easier for users by using a `if:` on the cache to use a bump (ex. "-x1" -> "-x2") only for
 #   the affected major+minor `dk-version`
+#
+# DOCS
+# ----
+#
+# * STORE: The `store` input selects where the build reads its value/trace stores:
+#     - 'release' (default): lazily load value and trace stores from the last release of
+#       the same major+minor line via `dk0 restore github-l2`. Only the small value-store
+#       indexes are downloaded; value blobs are range-fetched on demand, so store is not
+#       bound by the ~10GB all-or-nothing GitHub Actions cache. A missing release will be
+#       a clean build.
+#     - 'cache': persist value and trace stores in the ~10GB GitHub Actions cache between runs.
+#     - 'none': no valuestore and no tracestore => clean build.
 name: 'Distribute dk modules'
 description: 'Distribute your dk modules in your GitHub Action workflow'
 branding:
@@ -30,10 +42,19 @@ inputs: # Max 25 inputs is practical limit. https://github.com/orgs/community/di
   distscript:
     description: 'The location of the distribution scripts. Do not add /run.t or /run.u to distribution script directories that contain run.t or run.u. Examples: dist-win32.u, dist/Linux_x86_64.u'
     required: false # true does nothing
-  use-cache:
-    description: 'Whether to cache value stores and trace stores between runs.'
+  store:
+    description: >-
+      Where the build reads its value and trace stores from. One of:
+      "release" (default) lazily loads the value and trace stores from the last
+      release, if any, for incremental builds — only the small value-store
+      indexes are downloaded and individual value blobs are range-fetched on
+      demand, so it is not bound by the size-limited (ex. 10GB), all-or-nothing
+      GitHub Actions cache (a missing previous release is a clean build);
+      "cache" uses the GitHub Actions cache to persist the value and trace
+      stores between runs; "none" uses no valuestore and no tracestore for clean
+      builds.
     required: false
-    default: 'false'
+    default: 'release'
   options:
     description: 'Options to pass to `dk` and/or `dk0`.'
     required: false
@@ -329,7 +350,7 @@ runs:
 
       # --------- E.1 Cache Restore ----------
       - name: Cache restore dk stores
-        if: inputs.use-cache != ''
+        if: inputs.store == 'cache'
         uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         id: restore-cache-dk-distribute
         with:
@@ -361,6 +382,27 @@ runs:
         # --errors-plain option helps cross-platform CI caches since the cache+data is under the project t/ subdirectory
         run: |
           rm -rf etc/dk/i
+
+          # ---- Restore previous release as a lazy build cache ----
+          # Seeds the trace store (t/c) and lazy value pointers (t/d) from the
+          # most recent published release of this major.minor line, so this run
+          # gets incremental cache hits without a 10GB all-or-nothing CI cache.
+          # Only value-store indexes are fetched eagerly; value blobs are
+          # range-fetched on demand by `distribute`. Best-effort: any failure
+          # degrades to a cold build.
+          if [ "${{ inputs.store }}" = "release" ]; then
+            MAJMIN='${{ steps.dk-vars.outputs.dk_build_version_majmin }}'
+            PREVTAG=$(gh release list --repo '${{ github.repository }}' --exclude-drafts --limit 100 --json tagName --jq '.[].tagName' 2>/dev/null \
+              | grep -E "^${MAJMIN//./\\.}\." | grep -vxF '${{ github.ref_name }}' | head -n1 || true)
+            if [ -n "$PREVTAG" ]; then
+              echo "dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD restore github-l2 ${{ github.repository }}@$PREVTAG"
+              dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD restore github-l2 "${{ github.repository }}@$PREVTAG" \
+                || echo "::warning title=dk-distribute::restore from previous release '$PREVTAG' failed; building from scratch"
+            else
+              echo "No previous ${MAJMIN}.* release found; building from scratch"
+            fi
+          fi
+
           echo "dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD update"
           dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD update
 
@@ -406,6 +448,28 @@ runs:
           Push-Location "${{ env.INPUTWORKSPACEDIR }}"
           try {
             if (Test-Path etc/dk/i) { Remove-Item -Recurse -Force etc/dk/i }
+
+            # ---- Restore previous release as a lazy build cache ----
+            # Seeds t/c (traces) and t/d (lazy value pointers) from the most
+            # recent published release of this major.minor line. Only value-
+            # store indexes are fetched eagerly; value blobs are range-fetched
+            # on demand by `distribute`. Best-effort: failure -> cold build.
+            if ("${{ inputs.store }}" -eq "release") {
+              $majmin = "${{ steps.dk-vars.outputs.dk_build_version_majmin }}"
+              $refname = "${{ github.ref_name }}"
+              $prevtag = (gh release list --repo "${{ github.repository }}" --exclude-drafts --limit 100 --json tagName --jq ".[].tagName" |
+                Where-Object { $_ -like "$majmin.*" -and $_ -ne $refname } | Select-Object -First 1)
+              if ($prevtag) {
+                Write-Host "dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD restore github-l2 ${{ github.repository }}@$prevtag"
+                dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD restore github-l2 "${{ github.repository }}@$prevtag"
+                if ($LASTEXITCODE -ne 0) {
+                  Write-Host "::warning title=dk-distribute::restore from previous release '$prevtag' failed; building from scratch"
+                }
+              } else {
+                Write-Host "No previous $majmin.* release found; building from scratch"
+              }
+            }
+
             Write-Host "dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD update"
             dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD update
             if ($LASTEXITCODE -ne 0) {
@@ -523,7 +587,7 @@ runs:
 
       # --------- X.1 Cache Save ----------
       - name: Cache save dk stores
-        if: inputs.use-cache != '' && steps.restore-cache-dk-distribute.outputs.cache-hit == ''
+        if: inputs.store == 'cache' && steps.restore-cache-dk-distribute.outputs.cache-hit == ''
         uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         id: save-cache-dk-distribute
         with:
