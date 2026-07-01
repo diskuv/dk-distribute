@@ -392,8 +392,15 @@ runs:
           # degrades to a cold build.
           if [ "${{ inputs.store }}" = "release" ]; then
             MAJMIN='${{ steps.dk-vars.outputs.dk_build_version_majmin }}'
-            PREVTAG=$(gh release list --repo '${{ github.repository }}' --exclude-drafts --limit 100 --json tagName --jq '.[].tagName' 2>/dev/null \
-              | grep -E "^${MAJMIN//./\\.}\." | grep -vxF '${{ github.ref_name }}' | head -n1 || true)
+            # Capture the release list on its own so a `gh` failure (auth, rate
+            # limit, API error) surfaces in the log and a warning, instead of
+            # being swallowed and mistaken for "no previous release".
+            if RELEASES=$(gh release list --repo '${{ github.repository }}' --exclude-drafts --limit 100 --json tagName --jq '.[].tagName'); then
+              PREVTAG=$(printf '%s\n' "$RELEASES" | grep -E "^${MAJMIN//./\\.}\." | grep -vxF '${{ github.ref_name }}' | head -n1 || true)
+            else
+              echo "::warning title=dk-distribute::gh release list failed; building from scratch"
+              PREVTAG=
+            fi
             if [ -n "$PREVTAG" ]; then
               echo "dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD restore github-l2 ${{ github.repository }}@$PREVTAG"
               dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD restore github-l2 "${{ github.repository }}@$PREVTAG" \
@@ -457,8 +464,15 @@ runs:
             if ("${{ inputs.store }}" -eq "release") {
               $majmin = "${{ steps.dk-vars.outputs.dk_build_version_majmin }}"
               $refname = "${{ github.ref_name }}"
-              $prevtag = (gh release list --repo "${{ github.repository }}" --exclude-drafts --limit 100 --json tagName --jq ".[].tagName" |
-                Where-Object { $_ -like "$majmin.*" -and $_ -ne $refname } | Select-Object -First 1)
+              # Capture the release list on its own so a `gh` failure surfaces as
+              # a warning instead of being mistaken for "no previous release".
+              $releases = gh release list --repo "${{ github.repository }}" --exclude-drafts --limit 100 --json tagName --jq ".[].tagName"
+              if ($LASTEXITCODE -ne 0) {
+                Write-Host "::warning title=dk-distribute::gh release list failed; building from scratch"
+                $prevtag = $null
+              } else {
+                $prevtag = ($releases | Where-Object { $_ -like "$majmin.*" -and $_ -ne $refname } | Select-Object -First 1)
+              }
               if ($prevtag) {
                 Write-Host "dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD restore github-l2 ${{ github.repository }}@$prevtag"
                 dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD restore github-l2 "${{ github.repository }}@$prevtag"
