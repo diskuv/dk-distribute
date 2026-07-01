@@ -385,29 +385,18 @@ runs:
 
           # ---- Restore previous release as a lazy build cache ----
           # Seeds the trace store (t/c) and lazy value pointers (t/d) from the
-          # most recent published release of this major.minor line, so this run
-          # gets incremental cache hits without a 10GB all-or-nothing CI cache.
-          # Only value-store indexes are fetched eagerly; value blobs are
-          # range-fetched on demand by `distribute`. Best-effort: any failure
-          # degrades to a cold build.
+          # most recent published release of this major.minor line that is
+          # strictly older than the tag being built, so this run gets
+          # incremental cache hits without a 10GB all-or-nothing CI cache. dk0
+          # resolves the previous tag itself with its embedded GitHub CLI, so no
+          # host `gh` is needed (e.g. inside a manylinux container). Only value-
+          # store indexes are fetched eagerly; value blobs are range-fetched on
+          # demand by `distribute`. Best-effort: any failure (including an
+          # unavailable release listing) degrades to a cold build.
           if [ "${{ inputs.store }}" = "release" ]; then
-            MAJMIN='${{ steps.dk-vars.outputs.dk_build_version_majmin }}'
-            # Capture the release list on its own so a `gh` failure (auth, rate
-            # limit, API error) surfaces in the log and a warning, instead of
-            # being swallowed and mistaken for "no previous release".
-            if RELEASES=$(gh release list --repo '${{ github.repository }}' --exclude-drafts --limit 100 --json tagName --jq '.[].tagName'); then
-              PREVTAG=$(printf '%s\n' "$RELEASES" | grep -E "^${MAJMIN//./\\.}\." | grep -vxF '${{ github.ref_name }}' | head -n1 || true)
-            else
-              echo "::warning title=dk-distribute::gh release list failed; building from scratch"
-              PREVTAG=
-            fi
-            if [ -n "$PREVTAG" ]; then
-              echo "dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD restore github-l2 ${{ github.repository }}@$PREVTAG"
-              dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD restore github-l2 "${{ github.repository }}@$PREVTAG" \
-                || echo "::warning title=dk-distribute::restore from previous release '$PREVTAG' failed; building from scratch"
-            else
-              echo "No previous ${MAJMIN}.* release found; building from scratch"
-            fi
+            echo "dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD restore github-l2 ${{ github.repository }} --tag-before ${{ github.ref_name }}"
+            dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD restore github-l2 "${{ github.repository }}" --tag-before "${{ github.ref_name }}" \
+              || echo "::warning title=dk-distribute::restore from a previous release failed; building from scratch"
           fi
 
           echo "dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD update"
@@ -458,29 +447,17 @@ runs:
 
             # ---- Restore previous release as a lazy build cache ----
             # Seeds t/c (traces) and t/d (lazy value pointers) from the most
-            # recent published release of this major.minor line. Only value-
-            # store indexes are fetched eagerly; value blobs are range-fetched
-            # on demand by `distribute`. Best-effort: failure -> cold build.
+            # recent published release of this major.minor line that is strictly
+            # older than the tag being built. dk0 resolves the previous tag
+            # itself with its embedded GitHub CLI, so no host `gh` is needed.
+            # Only value-store indexes are fetched eagerly; value blobs are
+            # range-fetched on demand by `distribute`. Best-effort: any failure
+            # (including an unavailable release listing) -> cold build.
             if ("${{ inputs.store }}" -eq "release") {
-              $majmin = "${{ steps.dk-vars.outputs.dk_build_version_majmin }}"
-              $refname = "${{ github.ref_name }}"
-              # Capture the release list on its own so a `gh` failure surfaces as
-              # a warning instead of being mistaken for "no previous release".
-              $releases = gh release list --repo "${{ github.repository }}" --exclude-drafts --limit 100 --json tagName --jq ".[].tagName"
+              Write-Host "dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD restore github-l2 ${{ github.repository }} --tag-before ${{ github.ref_name }}"
+              dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD restore github-l2 "${{ github.repository }}" --tag-before "${{ github.ref_name }}"
               if ($LASTEXITCODE -ne 0) {
-                Write-Host "::warning title=dk-distribute::gh release list failed; building from scratch"
-                $prevtag = $null
-              } else {
-                $prevtag = ($releases | Where-Object { $_ -like "$majmin.*" -and $_ -ne $refname } | Select-Object -First 1)
-              }
-              if ($prevtag) {
-                Write-Host "dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD restore github-l2 ${{ github.repository }}@$prevtag"
-                dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD restore github-l2 "${{ github.repository }}@$prevtag"
-                if ($LASTEXITCODE -ne 0) {
-                  Write-Host "::warning title=dk-distribute::restore from previous release '$prevtag' failed; building from scratch"
-                }
-              } else {
-                Write-Host "No previous $majmin.* release found; building from scratch"
+                Write-Host "::warning title=dk-distribute::restore from a previous release failed; building from scratch"
               }
             }
 
