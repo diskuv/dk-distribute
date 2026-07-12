@@ -58,6 +58,18 @@ inputs: # Max 25 inputs is practical limit. https://github.com/orgs/community/di
   options:
     description: 'Options to pass to `dk` and/or `dk0`.'
     required: false
+  trust-packages:
+    description: >-
+      Space-separated package library ids (ex. 'CommonsBase_GNU
+      CommonsBase_Win32') whose producer OpenBSD signify keys are accepted
+      without an interactive prompt (each becomes a repeated
+      `--trust-local-package` option). dk0 denies unknown producer keys by
+      default and CI has no terminal to accept them, so list every package
+      your workspace imports here, except `CommonsBase_Std` (the built-in dk
+      trust root) and this repository's own package (always trusted). It never
+      overrides signature verification or the key-rotation rules.
+    required: false
+    default: ''
   short-build-dir:
     description: 'Optional absolute Windows path like C:\b. When set on Windows, the directory is deleted and recreated before use, a workspace junction is created at <dir>\w, and dk uses <dir>\k, <dir>\d and <dir>\c for keys, data and cache.'
     required: false
@@ -112,6 +124,7 @@ runs:
           INPUTDISTSCRIPT: ${{ inputs.distscript }}
           INPUTID: ${{ inputs.id }}
           INPUTTARGETABI: ${{ inputs.target-abi }}
+          INPUTTRUSTPACKAGES: ${{ inputs.trust-packages }}
         run: |
           case "${{ env.INPUTVERSION }}" in
             2.4) DK_BUILD_VERSION_REF=V2_4; DK_BUILD_VERSION_MAJMIN=2.4 ;;
@@ -183,6 +196,16 @@ runs:
           # convert version like 1.2.3 to underscore separated major and minor version like 1_2
           DK_ID_VERSION_MAJMINUNDER=$(printf "%s" "${DK_ID_VERSION}" | awk -F. '{print $1"_"$2}')
           echo "dk_id_version_majminunder=${DK_ID_VERSION_MAJMINUNDER}" | tee -a "$GITHUB_OUTPUT"
+
+          # --trust-local-package options for dk0's consumer-side import trust
+          # checks (unknown producer keys are denied by default and CI has no
+          # terminal to accept them): this repository's own package plus every
+          # package listed in the trust-packages input.
+          DK_TRUST_OPTIONS="--trust-local-package ${DK_ID_LIBRARY}"
+          for trust_package in ${{ env.INPUTTRUSTPACKAGES }}; do
+            DK_TRUST_OPTIONS="${DK_TRUST_OPTIONS} --trust-local-package ${trust_package}"
+          done
+          echo "dk_trust_options=${DK_TRUST_OPTIONS}" | tee -a "$GITHUB_OUTPUT"
 
       - name: Check Key Pairs # Must be after 'dk-vars' step for correct error message
         if: inputs.pubkey == '' || inputs.seckey == ''
@@ -373,6 +396,7 @@ runs:
           INPUTOPTIONS: >-
             ${{ inputs.options }}
             -n ${{ steps.dk-vars.outputs.dk_build_number }}
+            ${{ steps.dk-vars.outputs.dk_trust_options }}
             ${{ inputs.execution-abi && format('--execution-abi {0}', inputs.execution-abi) }}
             ${{ inputs.target-abi && format('--target-abi {0}', inputs.target-abi) }}
           INPUTDISTSCRIPT: ${{ inputs.distscript }}
@@ -406,9 +430,11 @@ runs:
           install -d dk-patches
           dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' --diff - --diff dk-patches/${{ steps.dk-vars.outputs.dk_dist_part }}.patch ${{ env.INPUTDISTSCRIPT }}
 
+          # --keys-env DK_BUILD lets combine sign the combined distribution's
+          # canonical build payload with the distribution key.
           if [ "${{ env.INPUTSTANDALONE }}" == "true" ]; then
-            echo "dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
-            dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
+            echo "dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
+            dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
           fi
 
           du -sh dk-dist/*
@@ -433,6 +459,7 @@ runs:
           INPUTOPTIONS: >-
             ${{ inputs.options }}
             -n ${{ steps.dk-vars.outputs.dk_build_number }}
+            ${{ steps.dk-vars.outputs.dk_trust_options }}
             ${{ steps.prepare-short-build-dir.outputs.dk_extra_options }}
             ${{ inputs.execution-abi && format('--execution-abi {0}', inputs.execution-abi) }}
             ${{ inputs.target-abi && format('--target-abi {0}', inputs.target-abi) }}
@@ -474,9 +501,11 @@ runs:
               throw "dk0 distribute failed with exit code $LASTEXITCODE"
             }
 
+            # --keys-env DK_BUILD lets combine sign the combined distribution's
+            # canonical build payload with the distribution key.
             if ("${{ env.INPUTSTANDALONE }}" -eq "true") {
-              Write-Host "dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
-              dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
+              Write-Host "dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
+              dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
               if ($LASTEXITCODE -ne 0) {
                 throw "dk0 combine failed with exit code $LASTEXITCODE"
               }

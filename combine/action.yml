@@ -21,6 +21,12 @@ inputs:
   id:
     description: 'The library and version of your distribution. Defaults to github repository (without the owner) plus @ plus the github reference (ie. tag or branch). Ex. CommonsBase_Std@1.0.1. The version must be valid semver. Any semver build metadata (a "+" and [0-9A-Za-z-] characters) is stripped.'
     required: false # true does nothing
+  pubkey:
+    description: 'Your public key for the distribution version. When given with seckey, combine signs the combined distribution build payload (build.attestation.openbsd_signify) with it.'
+    required: false
+  seckey:
+    description: 'Your secret key for the distribution version. When given with pubkey, combine signs the combined distribution build payload (build.attestation.openbsd_signify) with it.'
+    required: false
   options:
     description: 'Options to pass to `dk` and/or `dk0`.'
     required: false
@@ -84,6 +90,13 @@ runs:
           fi
 
           echo "dk_id_library=${DK_ID_LIBRARY}" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Check Key Pair
+        if: (inputs.pubkey == '') != (inputs.seckey == '')
+        shell: bash
+        run: |
+          echo "::error title=⛔ error hint::Set both the 'pubkey' and 'seckey' inputs (to sign the combined distribution build payload) or neither."
+          exit 1
 
       # --------- Linux static toolchain ----------
 
@@ -215,13 +228,18 @@ runs:
 
       - name: Combine on Unix
         env:
+          DK_BUILD_PUBKEY: "${{ inputs.pubkey }}"
+          DK_BUILD_SECKEY: "${{ inputs.seckey }}"
           INPUTOPTIONS: >-
             ${{ inputs.options }}
+            ${{ inputs.pubkey != '' && '--keys-env DK_BUILD' || '' }}
             ${{ inputs.execution-abi && format('--execution-abi {0}', inputs.execution-abi) }}
             ${{ inputs.target-abi && format('--target-abi {0}', inputs.target-abi) }}
         shell: bash
         if: runner.os != 'Windows'
         # --errors-plain option helps cross-platform CI caches since the cache+data is under the project t/ subdirectory
+        # --keys-env DK_BUILD (when the pubkey/seckey inputs are set) signs the
+        # combined distribution's canonical build payload with the distribution key
         run: |
           echo "dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
           dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
@@ -230,12 +248,17 @@ runs:
 
       - name: Combine on Windows
         env:
+          DK_BUILD_PUBKEY: "${{ inputs.pubkey }}"
+          DK_BUILD_SECKEY: "${{ inputs.seckey }}"
           INPUTOPTIONS: >-
             ${{ inputs.options }}
+            ${{ inputs.pubkey != '' && '--keys-env DK_BUILD' || '' }}
             ${{ inputs.execution-abi && format('--execution-abi {0}', inputs.execution-abi) }}
             ${{ inputs.target-abi && format('--target-abi {0}', inputs.target-abi) }}
         shell: pwsh
         if: runner.os == 'Windows'
+        # --keys-env DK_BUILD (when the pubkey/seckey inputs are set) signs the
+        # combined distribution's canonical build payload with the distribution key
         run: |
           Write-Host "dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
           dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'

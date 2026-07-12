@@ -76,6 +76,8 @@ jobs:
       - name: Combine Modules
         uses: diskuv/dk-distribute/combine@v2
         with:
+            pubkey: ${{ secrets.distribute_1_0_pubkey }} # change based on MAJOR.MINOR
+            seckey: ${{ secrets.distribute_1_0_seckey }} # change based on MAJOR.MINOR
             experimental-dk-owner: ${{ github.repository_owner == 'dkpkg' && 'diskuv' || github.repository_owner }}
             experimental-mlfront-ref: ${{ github.ref_type != 'tag' && 'HEAD' }}
 
@@ -96,6 +98,14 @@ Be sure to review the following places carefully:
 + the `jobs / 'distribute' / strategy / matrix / include`
 + the `jobs / 'distribute' / steps / 'Distribute Modules' / pubkey`
 + the `jobs / 'distribute' / steps / 'Distribute Modules' / seckey`
++ the `jobs / 'combine' / steps / 'Combine Modules' / pubkey` and `seckey`
+  (they let `combine` sign the distribution build payload)
++ if your workspace imports packages other than `CommonsBase_Std` (the
+  built-in dk trust root) and your own package, list them in the
+  `jobs / 'distribute' / steps / 'Distribute Modules' / trust-packages`
+  input (ex. `trust-packages: 'CommonsBase_GNU CommonsBase_Win32'`); dk0
+  denies unknown producer keys by default and CI has no terminal to accept
+  them
 
 Now, when you push a git tag, the GitHub Actions will create the following directories in your project directory:
 
