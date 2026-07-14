@@ -405,6 +405,17 @@ runs:
         if: runner.os != 'Windows'
         # --errors-plain option helps cross-platform CI caches since the cache+data is under the project t/ subdirectory
         run: |
+          # ---- Transfer producer-key trust, then clear the import dir ----
+          # The committed etc/dk/i values files are the workspace's prior-import
+          # trust anchors (dk0's consumer trust scans them alongside the records
+          # in etc/dk/t). Copy them into etc/dk/t before wiping etc/dk/i so
+          # `update` imports fresh (latest) releases without re-prompting for
+          # already-trusted producer keys. etc/dk/t is not an include directory,
+          # so no stale release values or traces are ever resolved from it.
+          if [ -d etc/dk/i ]; then
+            install -d etc/dk/t
+            cp -p etc/dk/i/*.values.json etc/dk/t/ 2>/dev/null || true
+          fi
           rm -rf etc/dk/i
 
           # ---- Restore previous release as a lazy build cache ----
@@ -470,7 +481,19 @@ runs:
         run: |
           Push-Location "${{ env.INPUTWORKSPACEDIR }}"
           try {
-            if (Test-Path etc/dk/i) { Remove-Item -Recurse -Force etc/dk/i }
+            # ---- Transfer producer-key trust, then clear the import dir ----
+            # The committed etc/dk/i values files are the workspace's prior-import
+            # trust anchors (dk0's consumer trust scans them alongside the records
+            # in etc/dk/t). Copy them into etc/dk/t before wiping etc/dk/i so
+            # `update` imports fresh (latest) releases without re-prompting for
+            # already-trusted producer keys. etc/dk/t is not an include directory,
+            # so no stale release values or traces are ever resolved from it.
+            if (Test-Path etc/dk/i) {
+              New-Item -ItemType Directory -Force etc/dk/t | Out-Null
+              Get-ChildItem etc/dk/i -Filter *.values.json -File -ErrorAction SilentlyContinue |
+                Copy-Item -Destination etc/dk/t -Force
+              Remove-Item -Recurse -Force etc/dk/i
+            }
 
             # ---- Restore previous release as a lazy build cache ----
             # Seeds t/c (traces) and t/d (lazy value pointers) from the most
