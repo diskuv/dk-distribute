@@ -381,9 +381,11 @@ runs:
             enableCrossOsArchive: true
             #   SYNC: must match Cache Save below
             path: ${{ runner.os == 'Windows' && inputs.short-build-dir != '' && steps.prepare-short-build-dir.outputs.cache_paths || 't' }}
-            #   SYNC: must match Cache Save below.
-            key: dk-stores-and-keys-x1-${{ steps.dk-vars.outputs.dk_build_version_majmin }}-${{ github.run_id }} # update cache on every run
-            restore-keys: dk-stores-and-keys-x1-${{ steps.dk-vars.outputs.dk_build_version_majmin }}             # use latest cache for this version
+            #   SYNC: must match Cache Save below. The dist part scopes the cache
+            #   per slot so parallel matrix jobs do not collide on one run_id key
+            #   (each slot then restores and resumes its own build).
+            key: dk-stores-and-keys-x1-${{ steps.dk-vars.outputs.dk_build_version_majmin }}-${{ steps.dk-vars.outputs.dk_dist_part }}-${{ github.run_id }} # update cache on every run
+            restore-keys: dk-stores-and-keys-x1-${{ steps.dk-vars.outputs.dk_build_version_majmin }}-${{ steps.dk-vars.outputs.dk_dist_part }}             # use latest cache for this slot
 
 
       # --------- G.1 Distribute ----------
@@ -629,8 +631,13 @@ runs:
           path: dk-dist/
 
       # --------- X.1 Cache Save ----------
+      # `always()` so a build that FAILS (e.g. a value-id `--diff` exit 3 during a
+      # harvest) or is CANCELLED (job hits the runner time limit) still persists
+      # its value/trace stores. The next run restores this slot's cache and
+      # resumes, so an interrupted multi-hour closure build never restarts from
+      # scratch and a harvest round's build is reused by the fill round.
       - name: Cache save dk stores
-        if: inputs.store == 'cache' && steps.restore-cache-dk-distribute.outputs.cache-hit == ''
+        if: always() && inputs.store == 'cache' && steps.restore-cache-dk-distribute.outputs.cache-hit == ''
         uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         id: save-cache-dk-distribute
         with:
@@ -639,4 +646,4 @@ runs:
             #   SYNC: must match Cache Load above
             path: ${{ runner.os == 'Windows' && inputs.short-build-dir != '' && steps.prepare-short-build-dir.outputs.cache_paths || 't' }}
             #   SYNC: must match Cache Load above
-            key: dk-stores-and-keys-x1-${{ steps.dk-vars.outputs.dk_build_version_majmin }}-${{ github.run_id }} # update cache on every run
+            key: dk-stores-and-keys-x1-${{ steps.dk-vars.outputs.dk_build_version_majmin }}-${{ steps.dk-vars.outputs.dk_dist_part }}-${{ github.run_id }} # update cache on every run
