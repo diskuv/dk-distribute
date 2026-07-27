@@ -92,6 +92,20 @@ inputs: # Max 25 inputs is practical limit. https://github.com/orgs/community/di
   target-abi:
     description: 'Set the target_abi wildcard so executables and libraries are generated for the ABI.'
     required: false
+  publish-objects:
+    description: >-
+      Optional. Newline-separated list of built objects to also publish as flat,
+      whole-file assets in the distribution (alongside the content-addressed value
+      store). Each line is: <object@version>|<zip-member>|<asset-basename>. After
+      `distribute`, the action runs `dk0 get-object` for each -- selecting the slot
+      from this job's distribution script -- and stages the result into dk-dist/ as
+      <asset-basename>-<abi>[.exe] (abi = the lowercased distscript basename; .exe
+      only for Windows_* slots), so it is shared, combined, attested, and released
+      like any other distribution asset. Example line:
+      "CommonsBase_Dk.Dk0@2.4.2|./bin/dk0.exe|dk0". No-op when empty or when
+      standalone is 'true'.
+    required: false
+    default: ''
 runs:
   using: composite
   steps:
@@ -562,6 +576,77 @@ runs:
             if ($LASTEXITCODE -ne 0) {
               throw "dk0 query failed with exit code $LASTEXITCODE"
             }
+          }
+          finally {
+            Pop-Location
+          }
+
+      # --------- G.2 Publish flat object assets ----------
+      # For each requested object, extract a whole zip member (ex. the runnable
+      # bin/dk0.exe) from the freshly-built value store into dk-dist/ so it is
+      # carried by "Share distribution artifacts" and thus combined, attested and
+      # released alongside the content-addressed store. The slot is the distscript
+      # basename (matches dk_dist_part); the asset is <name>-<abi>[.exe]. The
+      # globals mirror the distribute step MINUS `-n` (the build-number stamp is
+      # distribute-only): options (ex. -nosysinc), the trust options (so the local
+      # producer key is accepted without a terminal prompt), and the abi wildcards.
+      - name: Publish flat object assets on Unix
+        if: runner.os != 'Windows' && inputs.publish-objects != '' && inputs.standalone != 'true'
+        env:
+          INPUTOPTIONS: >-
+            ${{ inputs.options }}
+            ${{ steps.dk-vars.outputs.dk_trust_options }}
+            ${{ inputs.execution-abi && format('--execution-abi {0}', inputs.execution-abi) }}
+            ${{ inputs.target-abi && format('--target-abi {0}', inputs.target-abi) }}
+          INPUTDISTSCRIPT: ${{ inputs.distscript }}
+          INPUTPUBLISHOBJECTS: ${{ inputs.publish-objects }}
+        shell: bash
+        run: |
+          set -euf
+          slot=$(basename "${INPUTDISTSCRIPT}"); slot="${slot%%.*}"
+          abi=$(printf '%s' "$slot" | tr '[:upper:]' '[:lower:]')
+          case "$slot" in Windows_*) exe=".exe" ;; *) exe="" ;; esac
+          # here-string (not a pipe) so the loop runs in this shell and a failing
+          # get-object aborts the step via set -e
+          while IFS='|' read -r obj member name; do
+            [ -n "${obj:-}" ] || continue
+            out="dk-dist/${name}-${abi}${exe}"
+            echo "publish-objects: dksrc/dk0 get-object ${obj} -s Release.${slot} -m ${member} -f ${out}"
+            dksrc/dk0 --errors-plain ${INPUTOPTIONS} get-object "${obj}" -s "Release.${slot}" -m "${member}" -f "${out}"
+          done <<< "${INPUTPUBLISHOBJECTS}"
+          ls -l dk-dist/
+
+      - name: Publish flat object assets on Windows
+        if: runner.os == 'Windows' && inputs.publish-objects != '' && inputs.standalone != 'true'
+        env:
+          INPUTWORKSPACEDIR: ${{ steps.prepare-short-build-dir.outputs.workspace_dir }}
+          INPUTOPTIONS: >-
+            ${{ inputs.options }}
+            ${{ steps.dk-vars.outputs.dk_trust_options }}
+            ${{ steps.prepare-short-build-dir.outputs.dk_extra_options }}
+            ${{ inputs.execution-abi && format('--execution-abi {0}', inputs.execution-abi) }}
+            ${{ inputs.target-abi && format('--target-abi {0}', inputs.target-abi) }}
+          INPUTDISTSCRIPT: ${{ inputs.distscript }}
+          INPUTPUBLISHOBJECTS: ${{ inputs.publish-objects }}
+        shell: pwsh
+        run: |
+          Push-Location "${{ env.INPUTWORKSPACEDIR }}"
+          try {
+            $base = Split-Path -Leaf "${{ env.INPUTDISTSCRIPT }}"
+            $slot = if ($base.Contains('.')) { $base.Substring(0, $base.IndexOf('.')) } else { $base }
+            $abi  = $slot.ToLowerInvariant()
+            $exe  = if ($slot -like 'Windows_*') { '.exe' } else { '' }
+            foreach ($line in ($env:INPUTPUBLISHOBJECTS -split "`n")) {
+              $line = $line.Trim()
+              if ([string]::IsNullOrWhiteSpace($line)) { continue }
+              $parts  = $line -split '\|'
+              $obj    = $parts[0]; $member = $parts[1]; $name = $parts[2]
+              $out    = "dk-dist/$name-$abi$exe"
+              Write-Host "publish-objects: dksrc\dk0.cmd get-object $obj -s Release.$slot -m $member -f $out"
+              dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} get-object "$obj" -s "Release.$slot" -m "$member" -f "$out"
+              if ($LASTEXITCODE -ne 0) { throw "get-object failed for $obj (exit $LASTEXITCODE)" }
+            }
+            Get-ChildItem dk-dist | Format-Table Name,Length
           }
           finally {
             Pop-Location

@@ -155,6 +155,37 @@ The action removes `short-build-dir` before recreating it, so a leftover `C:\b\w
     distscript: ${{ matrix.distscript }}
 ```
 
+## Publish flat object assets
+
+A release normally ships only the content-addressed value store (imported with
+`dk0 add github-l2 <owner>/<repo>`). If you also want to publish a built object as
+a plain, whole-file asset -- for example the runnable `bin/dk0.exe` so it can be
+downloaded directly with `curl` -- list it in the `publish-objects` input.
+
+Each line is `<object@version>|<zip-member>|<asset-basename>`. After `distribute`,
+the action runs `dk0 get-object` for each line, selecting the slot from this job's
+distribution script (`Release.<distscript-basename>`), and stages the extracted
+member into `dk-dist/` as `<asset-basename>-<abi>[.exe]` (`<abi>` is the lowercased
+distscript basename; `.exe` is appended only for `Windows_*` slots). Because it
+lands in `dk-dist/`, it is shared, combined, attested (`attest-build-provenance`),
+and released (`action-gh-release`) exactly like every other distribution asset --
+no extra artifact wiring in your workflow.
+
+```yaml
+- name: Distribute Modules
+  uses: diskuv/dk-distribute@v3
+  with:
+    distscript: ${{ matrix.distscript }}   # ex. dist/Windows_x86_64.u -> slot Release.Windows_x86_64
+    publish-objects: |
+      CommonsBase_Dk.Dk0@2.4.2|./bin/dk0.exe|dk0
+      CommonsBase_Dk.Dk1@2.4.2|./bin/dk1.exe|dk1
+```
+
+For the matrix above this produces, per slot, `dk-dist/dk0-<abi>[.exe]` and
+`dk-dist/dk1-<abi>[.exe]` (ex. `dk-dist/dk0-windows_x86_64.exe`,
+`dk-dist/dk0-linux_x86_64`). The input is a no-op when empty or when `standalone`
+is `'true'`.
+
 ## Experimental Features
 
 ### Reference Build System
