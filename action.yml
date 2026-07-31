@@ -30,6 +30,18 @@ inputs: # Max 25 inputs is practical limit. https://github.com/orgs/community/di
     description: 'The version of the dk build system to use. The default is the latest version.'
     required: false
     default: '2.5'
+  orchestrator:
+    description: >-
+      Which dk engine runs the build: "dk0" (default, single-threaded) or "dk1"
+      (multi-threaded). dk1 dispatches independent per-package build steps
+      concurrently, so a driver that emits unordered precommands (sequential:
+      false + dependency edges) builds in parallel; under dk0 that same driver
+      degenerates to sequential because offloads run inline. dk1 defaults its job
+      count to the detected CPU count. Both are checked out from diskuv/dk and
+      resolve the same signed manifest, so switching only changes which launcher
+      runs; keep "dk0" for a drop-in build.
+    required: false
+    default: 'dk0'
   id:
     description: 'The library and version of your distribution. Defaults to github repository (without the owner) plus @ plus the github reference (ie. tag or branch). Ex. CommonsBase_Std@1.0.1. The version must be valid semver. Any semver build metadata (a "+" and [0-9A-Za-z-] characters) is stripped.'
     required: false # true does nothing
@@ -139,6 +151,7 @@ runs:
           INPUTID: ${{ inputs.id }}
           INPUTTARGETABI: ${{ inputs.target-abi }}
           INPUTTRUSTPACKAGES: ${{ inputs.trust-packages }}
+          INPUTORCHESTRATOR: ${{ inputs.orchestrator }}
         run: |
           case "${{ env.INPUTVERSION }}" in
             2.4) DK_BUILD_VERSION_REF=V2_4; DK_BUILD_VERSION_MAJMIN=2.4 ;;
@@ -147,6 +160,19 @@ runs:
           esac
           echo "dk_build_version_ref=${DK_BUILD_VERSION_REF}" | tee -a "$GITHUB_OUTPUT"
           echo "dk_build_version_majmin=${DK_BUILD_VERSION_MAJMIN}" | tee -a "$GITHUB_OUTPUT"
+
+          # Which engine orchestrates the build: dk0 (single-threaded) or dk1
+          # (multi-threaded). Selects both the vendored launcher run from
+          # dksrc/ (dk0/dk0.cmd vs dk1/dk1.cmd) and, on the experimental
+          # from-source path, the opam package installed (DkZero_Exec vs
+          # DkOne_Exec) plus the binary the wrapper execs.
+          case "${{ env.INPUTORCHESTRATOR }}" in
+            dk0) DK_LAUNCHER=dk0; DK_ORCH_OPAM=DkZero_Exec ;;
+            dk1) DK_LAUNCHER=dk1; DK_ORCH_OPAM=DkOne_Exec ;;
+            *) echo "::error title=⛔ error hint::Unsupported orchestrator '${{ env.INPUTORCHESTRATOR }}'. Use 'dk0' or 'dk1'."; exit 1 ;;
+          esac
+          echo "dk_launcher=${DK_LAUNCHER}" | tee -a "$GITHUB_OUTPUT"
+          echo "dk_orch_opam=${DK_ORCH_OPAM}" | tee -a "$GITHUB_OUTPUT"
 
           # default 'id' will be github.repository + '@' + github.ref_name except
           # github.repository (owner/repo) will not have the "owner/" prefix.
@@ -250,9 +276,9 @@ runs:
             dnf install -y "${pkgs[@]}"
           fi
 
-      # --------- C.1: Get dksrc/dk0 ----------
+      # --------- C.1: Get dksrc/${{ steps.dk-vars.outputs.dk_launcher }} ----------
 
-      - name: Get dksrc/dk0
+      - name: Get dksrc/${{ steps.dk-vars.outputs.dk_launcher }}
         if: >
           inputs.experimental-dk-owner != ''
           && (inputs.experimental-mlfront-ref == '' || inputs.experimental-mlfront-ref == 'false')
@@ -262,7 +288,7 @@ runs:
           path: dksrc
           ref: ${{ steps.dk-vars.outputs.dk_build_version_ref }}
 
-      - name: Get dksrc/dk0
+      - name: Get dksrc/${{ steps.dk-vars.outputs.dk_launcher }}
         if: >
           inputs.experimental-dk-owner == ''
           && (inputs.experimental-mlfront-ref == '' || inputs.experimental-mlfront-ref == 'false')
@@ -272,7 +298,7 @@ runs:
           path: dksrc
           ref: ${{ steps.dk-vars.outputs.dk_build_version_ref }}
 
-      # --------- C.2: Install dksrc/dk0 ----------
+      # --------- C.2: Install dksrc/${{ steps.dk-vars.outputs.dk_launcher }} ----------
       - name: Check if bwrap available for sandboxing
         id: check-bwrap
         if: inputs.experimental-mlfront-ref != '' && inputs.experimental-mlfront-ref != 'false'
@@ -327,25 +353,26 @@ runs:
         if: inputs.experimental-mlfront-ref != '' && inputs.experimental-mlfront-ref != 'false'
         shell: bash
         run: cd MlFront && opam pin . --no-action -y
-      - name: Install DkZero_Exec
+      - name: Install the orchestrator opam package
         if: inputs.experimental-mlfront-ref != '' && inputs.experimental-mlfront-ref != 'false'
         shell: bash
-        # Use `./DkZero_Exec.opam` not `DkZero_Exec` to process pin-depends:[]
-        run: cd MlFront && opam install ./DkZero_Exec.opam -y
-      - name: Create dksrc/dk0 Wrapper on Unix
+        # Use `./<pkg>.opam` not `<pkg>` to process pin-depends:[]. The package is
+        # DkZero_Exec (dk0) or DkOne_Exec (dk1), selected by the orchestrator input.
+        run: cd MlFront && opam install ./${{ steps.dk-vars.outputs.dk_orch_opam }}.opam -y
+      - name: Create dksrc/${{ steps.dk-vars.outputs.dk_launcher }} Wrapper on Unix
         if: runner.os != 'Windows' && inputs.experimental-mlfront-ref != '' && inputs.experimental-mlfront-ref != 'false'
         shell: bash
         run: |
           install -d dksrc
-          printf '#!/bin/sh\nset -euf\nopam exec -- dk0 "$@"\n' | tee dksrc/dk0
-          chmod +x dksrc/dk0
-      - name: Create dksrc\dk0.cmd Wrapper on Windows
+          printf '#!/bin/sh\nset -euf\nopam exec -- ${{ steps.dk-vars.outputs.dk_launcher }} "$@"\n' | tee dksrc/${{ steps.dk-vars.outputs.dk_launcher }}
+          chmod +x dksrc/${{ steps.dk-vars.outputs.dk_launcher }}
+      - name: Create dksrc\${{ steps.dk-vars.outputs.dk_launcher }}.cmd Wrapper on Windows
         if: runner.os == 'Windows' && inputs.experimental-mlfront-ref != '' && inputs.experimental-mlfront-ref != 'false'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path dksrc -Force | Out-Null
-          $content = "@echo off`nsetlocal enabledelayedexpansion`nopam exec -- dk0 %*`n"
-          Set-Content -Path dksrc\dk0.cmd -Value $content -Encoding ASCII
+          $content = "@echo off`nsetlocal enabledelayedexpansion`nopam exec -- ${{ steps.dk-vars.outputs.dk_launcher }} %*`n"
+          Set-Content -Path dksrc\${{ steps.dk-vars.outputs.dk_launcher }}.cmd -Value $content -Encoding ASCII
 
       - name: Prepare Windows short build directory
         id: prepare-short-build-dir
@@ -445,23 +472,23 @@ runs:
           # demand by `distribute`. Best-effort: any failure (including an
           # unavailable release listing) degrades to a cold build.
           if [ "${{ inputs.store }}" = "release" ]; then
-            echo "dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD restore github-l2 ${{ github.repository }} --tag-before ${{ github.ref_name }}"
-            dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD restore github-l2 "${{ github.repository }}" --tag-before "${{ github.ref_name }}" \
+            echo "dksrc/${{ steps.dk-vars.outputs.dk_launcher }} --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD restore github-l2 ${{ github.repository }} --tag-before ${{ github.ref_name }}"
+            dksrc/${{ steps.dk-vars.outputs.dk_launcher }} --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD restore github-l2 "${{ github.repository }}" --tag-before "${{ github.ref_name }}" \
               || echo "::warning title=dk-distribute::restore from a previous release failed; building from scratch"
           fi
 
-          echo "dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD update"
-          dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD update
+          echo "dksrc/${{ steps.dk-vars.outputs.dk_launcher }} --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD update"
+          dksrc/${{ steps.dk-vars.outputs.dk_launcher }} --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD update
 
-          echo "dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' --diff - --diff dk-patches/${{ steps.dk-vars.outputs.dk_dist_part }}.patch "${{ env.INPUTDISTSCRIPT }}""
+          echo "dksrc/${{ steps.dk-vars.outputs.dk_launcher }} --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' --diff - --diff dk-patches/${{ steps.dk-vars.outputs.dk_dist_part }}.patch "${{ env.INPUTDISTSCRIPT }}""
           install -d dk-patches
-          dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' --diff - --diff dk-patches/${{ steps.dk-vars.outputs.dk_dist_part }}.patch ${{ env.INPUTDISTSCRIPT }}
+          dksrc/${{ steps.dk-vars.outputs.dk_launcher }} --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' --diff - --diff dk-patches/${{ steps.dk-vars.outputs.dk_dist_part }}.patch ${{ env.INPUTDISTSCRIPT }}
 
           # --keys-env DK_BUILD lets combine sign the combined distribution's
           # canonical build payload with the distribution key.
           if [ "${{ env.INPUTSTANDALONE }}" == "true" ]; then
-            echo "dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
-            dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
+            echo "dksrc/${{ steps.dk-vars.outputs.dk_launcher }} --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
+            dksrc/${{ steps.dk-vars.outputs.dk_launcher }} --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
           fi
 
           du -sh dk-dist/*
@@ -474,7 +501,7 @@ runs:
         shell: bash
         if: runner.os != 'Windows'
         run: |
-          dksrc/dk0 --errors-plain ${{ inputs.options }} --keys-env DK_BUILD query
+          dksrc/${{ steps.dk-vars.outputs.dk_launcher }} --errors-plain ${{ inputs.options }} --keys-env DK_BUILD query
 
       - name: Distribute on Windows
         env:
@@ -520,22 +547,22 @@ runs:
             # range-fetched on demand by `distribute`. Best-effort: any failure
             # (including an unavailable release listing) -> cold build.
             if ("${{ inputs.store }}" -eq "release") {
-              Write-Host "dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD restore github-l2 ${{ github.repository }} --tag-before ${{ github.ref_name }}"
-              dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD restore github-l2 "${{ github.repository }}" --tag-before "${{ github.ref_name }}"
+              Write-Host "dksrc\${{ steps.dk-vars.outputs.dk_launcher }}.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD restore github-l2 ${{ github.repository }} --tag-before ${{ github.ref_name }}"
+              dksrc\${{ steps.dk-vars.outputs.dk_launcher }}.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD restore github-l2 "${{ github.repository }}" --tag-before "${{ github.ref_name }}"
               if ($LASTEXITCODE -ne 0) {
                 Write-Host "::warning title=dk-distribute::restore from a previous release failed; building from scratch"
               }
             }
 
-            Write-Host "dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD update"
-            dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD update
+            Write-Host "dksrc\${{ steps.dk-vars.outputs.dk_launcher }}.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD update"
+            dksrc\${{ steps.dk-vars.outputs.dk_launcher }}.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD update
             if ($LASTEXITCODE -ne 0) {
               throw "dk0 update failed with exit code $LASTEXITCODE"
             }
 
-            Write-Host "dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' --diff - --diff dk-patches/${{ steps.dk-vars.outputs.dk_dist_part }}.patch ${{ env.INPUTDISTSCRIPT }}"
+            Write-Host "dksrc\${{ steps.dk-vars.outputs.dk_launcher }}.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' --diff - --diff dk-patches/${{ steps.dk-vars.outputs.dk_dist_part }}.patch ${{ env.INPUTDISTSCRIPT }}"
             if (-not (Test-Path dk-patches)) { New-Item -ItemType Directory -Path dk-patches | Out-Null }
-            dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' --diff - --diff dk-patches/${{ steps.dk-vars.outputs.dk_dist_part }}.patch ${{ env.INPUTDISTSCRIPT }}
+            dksrc\${{ steps.dk-vars.outputs.dk_launcher }}.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' --diff - --diff dk-patches/${{ steps.dk-vars.outputs.dk_dist_part }}.patch ${{ env.INPUTDISTSCRIPT }}
             if ($LASTEXITCODE -ne 0) {
               throw "dk0 distribute failed with exit code $LASTEXITCODE"
             }
@@ -543,8 +570,8 @@ runs:
             # --keys-env DK_BUILD lets combine sign the combined distribution's
             # canonical build payload with the distribution key.
             if ("${{ env.INPUTSTANDALONE }}" -eq "true") {
-              Write-Host "dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
-              dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
+              Write-Host "dksrc\${{ steps.dk-vars.outputs.dk_launcher }}.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
+              dksrc\${{ steps.dk-vars.outputs.dk_launcher }}.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
               if ($LASTEXITCODE -ne 0) {
                 throw "dk0 combine failed with exit code $LASTEXITCODE"
               }
@@ -572,7 +599,7 @@ runs:
         run: |
           Push-Location "${{ env.INPUTWORKSPACEDIR }}"
           try {
-            dksrc\dk0.cmd --errors-plain ${{ inputs.options }} ${{ env.INPUTWINDOWOPTIONS }} --keys-env DK_BUILD query
+            dksrc\${{ steps.dk-vars.outputs.dk_launcher }}.cmd --errors-plain ${{ inputs.options }} ${{ env.INPUTWINDOWOPTIONS }} --keys-env DK_BUILD query
             if ($LASTEXITCODE -ne 0) {
               throw "dk0 query failed with exit code $LASTEXITCODE"
             }
@@ -611,8 +638,8 @@ runs:
           while IFS='|' read -r obj member name; do
             [ -n "${obj:-}" ] || continue
             out="dk-dist/${name}-${abi}${exe}"
-            echo "publish-objects: dksrc/dk0 get-object ${obj} -s Release.${slot} -m ${member} -f ${out}"
-            dksrc/dk0 --errors-plain ${INPUTOPTIONS} get-object "${obj}" -s "Release.${slot}" -m "${member}" -f "${out}"
+            echo "publish-objects: dksrc/${{ steps.dk-vars.outputs.dk_launcher }} get-object ${obj} -s Release.${slot} -m ${member} -f ${out}"
+            dksrc/${{ steps.dk-vars.outputs.dk_launcher }} --errors-plain ${INPUTOPTIONS} get-object "${obj}" -s "Release.${slot}" -m "${member}" -f "${out}"
           done <<< "${INPUTPUBLISHOBJECTS}"
           ls -l dk-dist/
 
@@ -642,8 +669,8 @@ runs:
               $parts  = $line -split '\|'
               $obj    = $parts[0]; $member = $parts[1]; $name = $parts[2]
               $out    = "dk-dist/$name-$abi$exe"
-              Write-Host "publish-objects: dksrc\dk0.cmd get-object $obj -s Release.$slot -m $member -f $out"
-              dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} get-object "$obj" -s "Release.$slot" -m "$member" -f "$out"
+              Write-Host "publish-objects: dksrc\${{ steps.dk-vars.outputs.dk_launcher }}.cmd get-object $obj -s Release.$slot -m $member -f $out"
+              dksrc\${{ steps.dk-vars.outputs.dk_launcher }}.cmd --errors-plain ${{ env.INPUTOPTIONS }} get-object "$obj" -s "Release.$slot" -m "$member" -f "$out"
               if ($LASTEXITCODE -ne 0) { throw "get-object failed for $obj (exit $LASTEXITCODE)" }
             }
             Get-ChildItem dk-dist | Format-Table Name,Length
