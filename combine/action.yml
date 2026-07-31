@@ -18,6 +18,14 @@ inputs:
     description: 'The version of the dk build system to use. The default is the latest version.'
     required: false
     default: '2.5'
+  orchestrator:
+    description: >-
+      Which dk engine runs combine: "dk0" (default) or "dk1". Both resolve the
+      same signed manifest and produce identical value-ids, so combine merges a
+      dk1-built distribution correctly under either. Set to match the distribute
+      jobs. dk1 is vendored in diskuv/dk V2_5, so "dk1" needs dk-version 2.5.
+    required: false
+    default: 'dk0'
   id:
     description: 'The library and version of your distribution. Defaults to github repository (without the owner) plus @ plus the github reference (ie. tag or branch). Ex. CommonsBase_Std@1.0.1. The version must be valid semver. Any semver build metadata (a "+" and [0-9A-Za-z-] characters) is stripped.'
     required: false # true does nothing
@@ -60,6 +68,7 @@ runs:
         env:
           INPUTVERSION: ${{ inputs.dk-version }}
           INPUTID: ${{ inputs.id }}
+          INPUTORCHESTRATOR: ${{ inputs.orchestrator }}
         run: |
           case "${{ env.INPUTVERSION }}" in
             2.4) DK_BUILD_VERSION_REF=V2_4; DK_BUILD_VERSION_MAJMIN=2.4 ;;
@@ -67,6 +76,16 @@ runs:
             *) echo "::error title=⛔ error hint::Unsupported version '${{ env.INPUTVERSION }}'. Supported versions: 2.4, 2.5"; exit 1 ;;
           esac
           echo "dk_build_version_ref=${DK_BUILD_VERSION_REF}" | tee -a "$GITHUB_OUTPUT"
+
+          # dk0 (default) or dk1 orchestrator: selects the vendored launcher and,
+          # on the experimental path, the opam package + wrapper binary.
+          case "${{ env.INPUTORCHESTRATOR }}" in
+            dk0) DK_LAUNCHER=dk0; DK_ORCH_OPAM=DkZero_Exec ;;
+            dk1) DK_LAUNCHER=dk1; DK_ORCH_OPAM=DkOne_Exec ;;
+            *) echo "::error title=⛔ error hint::Unsupported orchestrator '${{ env.INPUTORCHESTRATOR }}'. Use 'dk0' or 'dk1'."; exit 1 ;;
+          esac
+          echo "dk_launcher=${DK_LAUNCHER}" | tee -a "$GITHUB_OUTPUT"
+          echo "dk_orch_opam=${DK_ORCH_OPAM}" | tee -a "$GITHUB_OUTPUT"
 
           # default 'id' will be github.repository + '@' + github.ref_name except
           # github.repository (owner/repo) will not have the "owner/" prefix.
@@ -118,9 +137,9 @@ runs:
             dnf install -y "${pkgs[@]}"
           fi
 
-      # --------- C.1: Get dksrc/dk0 ----------
+      # --------- C.1: Get dksrc/${{ steps.dk-vars.outputs.dk_launcher }} ----------
 
-      - name: Get dksrc/dk0
+      - name: Get dksrc/${{ steps.dk-vars.outputs.dk_launcher }}
         if: >
           inputs.experimental-dk-owner != ''
           && (inputs.experimental-mlfront-ref == '' || inputs.experimental-mlfront-ref == 'false')
@@ -130,7 +149,7 @@ runs:
           path: dksrc
           ref: ${{ steps.dk-vars.outputs.dk_build_version_ref }}
 
-      - name: Get dksrc/dk0
+      - name: Get dksrc/${{ steps.dk-vars.outputs.dk_launcher }}
         if: >
           inputs.experimental-dk-owner == ''
           && (inputs.experimental-mlfront-ref == '' || inputs.experimental-mlfront-ref == 'false')
@@ -140,7 +159,7 @@ runs:
           path: dksrc
           ref: ${{ steps.dk-vars.outputs.dk_build_version_ref }}
 
-      # --------- C.2: Install dksrc/dk0 ----------
+      # --------- C.2: Install dksrc/${{ steps.dk-vars.outputs.dk_launcher }} ----------
       - name: Check if bwrap available for sandboxing
         id: check-bwrap
         if: inputs.experimental-mlfront-ref != '' && inputs.experimental-mlfront-ref != 'false'
@@ -199,21 +218,21 @@ runs:
         if: inputs.experimental-mlfront-ref != '' && inputs.experimental-mlfront-ref != 'false'
         shell: bash
         # Use `./DkZero_Exec.opam` not `DkZero_Exec` to process pin-depends:[]
-        run: cd MlFront && opam install ./DkZero_Exec.opam -y
-      - name: Create dksrc/dk0 Wrapper on Unix
+        run: cd MlFront && opam install ./${{ steps.dk-vars.outputs.dk_orch_opam }}.opam -y
+      - name: Create dksrc/${{ steps.dk-vars.outputs.dk_launcher }} Wrapper on Unix
         if: runner.os != 'Windows' && inputs.experimental-mlfront-ref != '' && inputs.experimental-mlfront-ref != 'false'
         shell: bash
         run: |
           install -d dksrc
-          printf '#!/bin/sh\nset -euf\nopam exec -- dk0 "$@"\n' | tee dksrc/dk0
-          chmod +x dksrc/dk0
-      - name: Create dksrc\dk0.cmd Wrapper on Windows
+          printf '#!/bin/sh\nset -euf\nopam exec -- ${{ steps.dk-vars.outputs.dk_launcher }} "$@"\n' | tee dksrc/${{ steps.dk-vars.outputs.dk_launcher }}
+          chmod +x dksrc/${{ steps.dk-vars.outputs.dk_launcher }}
+      - name: Create dksrc\${{ steps.dk-vars.outputs.dk_launcher }}.cmd Wrapper on Windows
         if: runner.os == 'Windows' && inputs.experimental-mlfront-ref != '' && inputs.experimental-mlfront-ref != 'false'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path dksrc -Force | Out-Null
-          $content = "@echo off`nsetlocal enabledelayedexpansion`nopam exec -- dk0 %*`n"
-          Set-Content -Path dksrc\dk0.cmd -Value $content -Encoding ASCII
+          $content = "@echo off`nsetlocal enabledelayedexpansion`nopam exec -- ${{ steps.dk-vars.outputs.dk_launcher }} %*`n"
+          Set-Content -Path dksrc\${{ steps.dk-vars.outputs.dk_launcher }}.cmd -Value $content -Encoding ASCII
 
       # --------- D.1 Download ----------
 
@@ -241,8 +260,8 @@ runs:
         # --keys-env DK_BUILD (when the pubkey/seckey inputs are set) signs the
         # combined distribution's canonical build payload with the distribution key
         run: |
-          echo "dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
-          dksrc/dk0 --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
+          echo "dksrc/${{ steps.dk-vars.outputs.dk_launcher }} --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
+          dksrc/${{ steps.dk-vars.outputs.dk_launcher }} --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
 
           du -sh dk-dist/*
 
@@ -260,8 +279,8 @@ runs:
         # --keys-env DK_BUILD (when the pubkey/seckey inputs are set) signs the
         # combined distribution's canonical build payload with the distribution key
         run: |
-          Write-Host "dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
-          dksrc\dk0.cmd --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
+          Write-Host "dksrc\${{ steps.dk-vars.outputs.dk_launcher }}.cmd --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'"
+          dksrc\${{ steps.dk-vars.outputs.dk_launcher }}.cmd --errors-plain ${{ env.INPUTOPTIONS }} --verbose combine --origin-name '${{ steps.dk-vars.outputs.dk_id_library }}' --mirror '${{github.server_url}}/${{github.repository}}/releases/download/${{github.ref_name}}'
           if ($LASTEXITCODE -ne 0) {
             throw "dk0 combine failed with exit code $LASTEXITCODE"
           }
