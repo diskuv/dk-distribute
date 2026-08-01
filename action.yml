@@ -723,9 +723,17 @@ runs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: logs
-          # ex. t/p/476/zx3y/l/Release.Agnostic/stdout.log
+          # Per-slot name (like distribution-<part>) so a failing matrix job's
+          # logs are downloadable on their own -- a single `logs` shared by
+          # every matrix job forces a download-by-id hunt to find the one that
+          # failed. Captures every per-slot command/stdout/stderr log from the
+          # build store (ex. t/p/476/zx3y/l/Release.Linux_x86_64_musl/stderr16.log)
+          # so a failed build is diagnosable from the artifact without re-running.
+          # These are diagnostic logs only; they are never part of the release
+          # files (only dk-dist/ is, via the caller's action-gh-release step).
+          name: logs-${{ steps.dk-vars.outputs.dk_dist_part }}
           path: t/p/*/*/l/*/
+          if-no-files-found: warn
 
       - name: Save patches
         if: always()
