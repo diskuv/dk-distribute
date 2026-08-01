@@ -1,0 +1,103 @@
+# MAINTENANCE NOTES
+# -----------------
+#
+# * Any backwards incompatible inputs require a major version change.
+# * This action owns the three steps that have to run in one order: attest the
+#   distribution, publish the attestation beside it, then create the release.
+#   The middle step can only run after `Attest`, because it downloads the
+#   attestation that step just produced, which is why it does not live in the
+#   `combine` or root actions: both finish before anything is attested.
+name: 'Attest and release a dk distribution'
+description: >-
+  Attest the files in dk-dist/, publish the sigstore bundle beside values.json
+  so consumers need no GitHub API token, and create the GitHub release.
+branding:
+  icon: package
+  color: 'gray-dark'
+inputs:
+  subject-path:
+    description: 'Files to attest. Defaults to every file of the distribution.'
+    required: false
+    default: 'dk-dist/*'
+  body-path:
+    description: 'Release notes file, written by the combine or distribute step.'
+    required: false
+    default: '.dist-CHANGELOG.txt'
+  prerelease:
+    description: >-
+      Whether to publish as a prerelease. Defaults to the R8 resumable-CI rule:
+      dk0 writes dk-dist/PARTIAL when the release completed only some objects,
+      and such a release is published as a PRERELEASE that `dk0 restore` seeds
+      and a normal `import` ignores, until a later run completes it.
+    required: false
+    default: ''
+  bundle-asset-name:
+    description: >-
+      Name of the published attestation bundle. Consumers derive this from the
+      release URL alone, so changing it makes them fall back to the GitHub API.
+    required: false
+    default: 'values.json.sigstore.jsonl'
+  attest:
+    description: >-
+      Set to "false" to skip attesting and publishing the bundle, and only
+      create the release. For repositories that release unattested artifacts.
+    required: false
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    - name: Attest
+      id: attest
+      if: inputs.attest != 'false'
+      uses: actions/attest-build-provenance@v3
+      with:
+        subject-path: ${{ inputs.subject-path }}
+
+    # Publish the sigstore bundle beside values.json so a consumer fetches it
+    # with a plain download and needs no GitHub API token. Three things here are
+    # easy to get wrong:
+    #
+    # The bytes come from `gh attestation download`, NOT from
+    # steps.attest.outputs.bundle-path. A consumer re-serializes each bundle line
+    # into the values.json it imports, preserving member order, so the asset has
+    # to be byte-identical to what the API serves; gh writes protojson and the
+    # attest action's own output does not order members the same way. Publishing
+    # the wrong one changes what every consumer imports.
+    #
+    # It is staged outside dk-dist/, which both `subject-path` and `files` glob,
+    # so the attest step can never be handed its own output.
+    #
+    # `shell: bash` because a release job can run on a Windows runner, where the
+    # default shell is PowerShell. The bundle is moved by glob rather than by
+    # recomputing the digest to name it: that keeps the step off `sha256sum`,
+    # which is GNU coreutils and absent from macOS runners, and it absorbs gh
+    # naming the file with a dash instead of a colon on Windows.
+    - name: Stage the attestation bundle
+      if: inputs.attest != 'false'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        BUNDLE_ASSET_NAME: ${{ inputs.bundle-asset-name }}
+      run: |
+        set -eu
+        mkdir -p dk-attest
+        n=0
+        until gh attestation download dk-dist/values.json -R "$GITHUB_REPOSITORY"; do
+          n=$((n + 1))
+          if [ "$n" -ge 5 ]; then
+            echo "The attestation for dk-dist/values.json never became available." >&2
+            exit 1
+          fi
+          sleep 5
+        done
+        mv sha256*.jsonl "dk-attest/$BUNDLE_ASSET_NAME"
+
+    - name: Release
+      uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1. Mar 15, 2026
+      with:
+        files: |
+          dk-dist/*
+          ${{ inputs.attest != 'false' && format('dk-attest/{0}', inputs.bundle-asset-name) || '' }}
+        body_path: ${{ inputs.body-path }}
+        prerelease: ${{ inputs.prerelease != '' && inputs.prerelease || hashFiles('dk-dist/PARTIAL') != '' }}

@@ -81,14 +81,8 @@ jobs:
             experimental-dk-owner: ${{ github.repository_owner == 'dkpkg' && 'diskuv' || github.repository_owner }}
             experimental-mlfront-ref: ${{ github.ref_type != 'tag' && 'HEAD' }}
 
-      - name: Attest
-        id: attest
-        uses: actions/attest-build-provenance@v3
-        with: { subject-path: dk-dist/* }
-
-      - name: Release ${{ github.job }}
-        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1. Mar 15, 2026
-        with: { files: dk-dist/*, body_path: ".dist-CHANGELOG.txt" }
+      - name: Attest and Release
+        uses: diskuv/dk-distribute/attest-release@v3
 
 ```
 
@@ -106,6 +100,46 @@ Be sure to review the following places carefully:
   input (ex. `trust-packages: 'CommonsBase_GNU CommonsBase_Win32'`); dk0
   denies unknown producer keys by default and CI has no terminal to accept
   them
+
+## Attesting and releasing
+
+`attest-release` performs the three steps that have to run in this order:
+
+1. attest every file of the distribution with
+   `actions/attest-build-provenance`,
+2. publish the sigstore bundle for `values.json` as a release asset named
+   `values.json.sigstore.jsonl`, and
+3. create the GitHub release.
+
+Step 2 is why these are one action rather than three workflow steps: the bundle
+can only be downloaded once step 1 has produced it, so it cannot live in
+`combine` or the root action, both of which finish before anything is attested.
+
+Publishing the bundle is what lets a consumer import the release without a
+GitHub API token:
+
+```console
+$ dk0 add github-l2 dkpkg/YourPackage@1.0.0   # no GH_TOKEN needed
+```
+
+A consumer fetches `values.json.sigstore.jsonl` beside `values.json` with a
+plain download and verifies it exactly as it verifies a bundle from the API, so
+moving the transport relaxes no check. A release published before this action
+existed carries no such asset, and consumers fall back to the GitHub API for it.
+
+The job needs the same permissions the individual steps needed:
+
+```yaml
+    permissions:
+      contents: write         # create the release
+      id-token: write         # attest
+      attestations: write     # attest, and read back the bundle
+      artifact-metadata: write
+```
+
+Use `attest: false` to create a release without attesting, and
+`prerelease:` to override the default, which publishes a partial (`dk0
+restore`-seedable) distribution as a prerelease.
 
 Now, when you push a git tag, the GitHub Actions will create the following directories in your project directory:
 
