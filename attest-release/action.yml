@@ -51,14 +51,15 @@ runs:
     # reference lets whoever controls it change what runs here, and this step
     # holds the id-token that signs the attestation.
     #
-    # This commit is v3.0.0. Note the `v3` tag still points at it, so a `@v3`
-    # reference has been getting v3.0.0 even after v3.1.0 and v3.2.0 shipped;
-    # bumping to a later v3 is a deliberate change, not a side effect of
-    # pinning.
+    # A consumer of this action needs both this commit and the
+    # actions/attest commit it calls (v4.1.1,
+    # a1948c3f048ba23858d222213b7c278aabede763) on any allowed-actions list,
+    # because such a list matches the reference text rather than the commit it
+    # resolves to.
     - name: Attest
       id: attest
       if: inputs.attest != 'false'
-      uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
+      uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
       with:
         subject-path: ${{ inputs.subject-path }}
 
