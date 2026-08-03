@@ -20,12 +20,12 @@ inputs:
     default: '2.5'
   orchestrator:
     description: >-
-      Which dk engine runs combine: "dk0" (default) or "dk1". Both resolve the
+      Which dk engine runs combine: "dk1" (default) or "dk0". Both resolve the
       same signed manifest and produce identical value-ids, so combine merges a
       dk1-built distribution correctly under either. Set to match the distribute
       jobs. dk1 is vendored in diskuv/dk V2_5, so "dk1" needs dk-version 2.5.
     required: false
-    default: 'dk0'
+    default: 'dk1'
   id:
     description: 'The library and version of your distribution. Defaults to github repository (without the owner) plus @ plus the github reference (ie. tag or branch). Ex. CommonsBase_Std@1.0.1. The version must be valid semver. Any semver build metadata (a "+" and [0-9A-Za-z-] characters) is stripped.'
     required: false # true does nothing

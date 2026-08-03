@@ -32,16 +32,17 @@ inputs: # Max 25 inputs is practical limit. https://github.com/orgs/community/di
     default: '2.5'
   orchestrator:
     description: >-
-      Which dk engine runs the build: "dk0" (default, single-threaded) or "dk1"
-      (multi-threaded). dk1 dispatches independent per-package build steps
+      Which dk engine runs the build: "dk1" (default, multi-threaded) or "dk0"
+      (single-threaded). dk1 dispatches independent per-package build steps
       concurrently, so a driver that emits unordered precommands (sequential:
       false + dependency edges) builds in parallel; under dk0 that same driver
       degenerates to sequential because offloads run inline. dk1 defaults its job
       count to the detected CPU count. Both are checked out from diskuv/dk and
       resolve the same signed manifest, so switching only changes which launcher
-      runs; keep "dk0" for a drop-in build.
+      runs. dk1 needs dk-version 2.5 (the default); set "dk0" for a
+      single-threaded build or when the pinned dk-version predates dk1.
     required: false
-    default: 'dk0'
+    default: 'dk1'
   id:
     description: 'The library and version of your distribution. Defaults to github repository (without the owner) plus @ plus the github reference (ie. tag or branch). Ex. CommonsBase_Std@1.0.1. The version must be valid semver. Any semver build metadata (a "+" and [0-9A-Za-z-] characters) is stripped.'
     required: false # true does nothing
