@@ -482,26 +482,7 @@ runs:
 
           echo "dksrc/${{ steps.dk-vars.outputs.dk_launcher }} --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' --diff - --diff dk-patches/${{ steps.dk-vars.outputs.dk_dist_part }}.patch "${{ env.INPUTDISTSCRIPT }}""
           install -d dk-patches
-          # TEMP DIAGNOSTIC: print the exact resolved distribute command, capture
-          # its exit, and on failure re-run the DkML compiler-staging get-object
-          # standalone with `--verbose -d parsetrace` so the sub-build resolution
-          # trace (hidden inside the memoized distribute subshell) is visible.
-          echo "EXACT DISTRIBUTE COMMAND >>> dksrc/${{ steps.dk-vars.outputs.dk_launcher }} --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' --diff - --diff dk-patches/${{ steps.dk-vars.outputs.dk_dist_part }}.patch ${{ env.INPUTDISTSCRIPT }}"
-          set +e
           dksrc/${{ steps.dk-vars.outputs.dk_launcher }} --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' --diff - --diff dk-patches/${{ steps.dk-vars.outputs.dk_dist_part }}.patch ${{ env.INPUTDISTSCRIPT }}
-          DK_DISTRIBUTE_RC=$?
-          set -e
-          if [ "$DK_DISTRIBUTE_RC" != 0 ]; then
-            echo "::group::dk-distribute TEMP DIAGNOSTIC: failing subshell resolution trace"
-            echo "----- ${{ env.INPUTDISTSCRIPT }}.actual (head) -----"
-            sed -n '1,140p' "${{ env.INPUTDISTSCRIPT }}.actual" 2>/dev/null || true
-            for PROBESLOT in Release.target_abi Release.Linux_x86_64 Release.Linux_x86_64_musl; do
-              echo "----- probe: get-object CommonsLang_OCaml.DkML@4.14.3 -s $PROBESLOT -e bin/* -e x86_64-linux-musl-cross/** -----"
-              dksrc/${{ steps.dk-vars.outputs.dk_launcher }} --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose -d parsetrace get-object CommonsLang_OCaml.DkML@4.14.3 -s "$PROBESLOT" -e 'bin/*' -e 'x86_64-linux-musl-cross/**' -d "/tmp/dkml-probe-$PROBESLOT" 2>&1 | grep -avE "\[progress\]|MiB downloaded" | tail -80 || true
-            done
-            echo "::endgroup::"
-            exit "$DK_DISTRIBUTE_RC"
-          fi
 
           # --keys-env DK_BUILD lets combine sign the combined distribution's
           # canonical build payload with the distribution key.
