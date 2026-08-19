@@ -104,6 +104,14 @@ inputs: # Max 25 inputs is practical limit. https://github.com/orgs/community/di
   target-abi:
     description: 'Set the target_abi wildcard so executables and libraries are generated for the ABI.'
     required: false
+  skip-toolchain-conformance:
+    description: >-
+      Emergency escape hatch: set 'true' to skip the per-ABI build-environment
+      conformance guard. Logged loudly with a workflow warning. A release built
+      with this set carries an attestation that does NOT imply toolchain
+      conformance.
+    required: false
+    default: 'false'
   publish-objects:
     description: >-
       Optional. Newline-separated list of built objects to also publish as flat,
@@ -255,6 +263,25 @@ runs:
         run: |
           echo "::error title=⛔ error hint::Distribution keypair missing. You need to populate 'distribute_${{ steps.dk-vars.outputs.dk_id_version_majminunder }}_pubkey' and 'distribute_${{ steps.dk-vars.outputs.dk_id_version_majminunder }}_seckey' in the Secrets for your workflow. See more in https://docs.github.com/en/actions/security-guides/encrypted-secrets. Then set the 'pubkey' and 'seckey' inputs in the 'with:' block of the workflow step, like the following on two lines: ${{ format('pubkey: {0}{1}{1} secrets.distribute_{3}_pubkey {2}{2} seckey: {0}{1}{1} secrets.distribute_{3}_seckey {2}{2}', '\$', '{', '}', steps.dk-vars.outputs.dk_id_version_majminunder) }}"
           exit 1
+
+      # --------- Toolchain conformance guard ----------
+      # Runs BEFORE any build so a non-conforming environment produces NO
+      # artifact; attest-build-provenance attests only artifacts of successful
+      # jobs, so a published attestation implies the environment conformed.
+      # The checks live in toolchain-conformance.sh (a data-driven table, one
+      # row per ABI family). The skip and no-ABI code paths live in the script
+      # too, so the test workflow exercises the exact code that runs here.
+      - name: Check Toolchain Conformance
+        shell: bash
+        env:
+          INPUTTARGETABI: ${{ inputs.target-abi }}
+          INPUTEXECUTIONABI: ${{ inputs.execution-abi }}
+          INPUTDISTSCRIPT: ${{ inputs.distscript }}
+          INPUTSKIP: ${{ inputs.skip-toolchain-conformance }}
+        # GITHUB_ACTION_PATH is expanded inside bash (never spliced through
+        # ${{ }}) so Windows backslashes stay out of the YAML escaping layer;
+        # the slash normalization is a no-op on Unix.
+        run: bash "${GITHUB_ACTION_PATH//\\//}/toolchain-conformance.sh"
 
       # --------- Linux static toolchain ----------
 

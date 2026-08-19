@@ -1,0 +1,167 @@
+# Validates the per-ABI build-environment conformance guard
+# (toolchain-conformance.sh and its wiring in action.yml).
+#
+# The "expected-fail" jobs are green when the guard correctly REJECTS a
+# non-conforming environment: they assert a non-zero exit and the presence of
+# the contract text in the failure message.
+name: Test toolchain conformance guard
+on:
+  push:
+    branches: ['claude/**']
+  workflow_dispatch:
+
+jobs:
+  # Pure-function unit tests: glibc parsing, numeric version comparison,
+  # table row order, ABI resolution precedence.
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run self tests
+        run: bash ./toolchain-conformance.sh --self-test
+
+  # The canonical Linux glibc environment passes the Linux rows.
+  pass-manylinux:
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/pypa/manylinux_2_28_x86_64:2026.04.08-5
+    steps:
+      - uses: actions/checkout@v6
+      - name: Guard passes for Linux_x86_64
+        env:
+          INPUTTARGETABI: Linux_x86_64
+          INPUTDISTSCRIPT: dist/Linux_x86_64.u
+        run: bash ./toolchain-conformance.sh
+      - name: Guard passes for Linux_x86_64_musl with the slot-bundled note
+        env:
+          INPUTTARGETABI: Linux_x86_64_musl
+          INPUTDISTSCRIPT: dist/Linux_x86_64_musl.u
+        run: |
+          out=$(bash ./toolchain-conformance.sh)
+          printf '%s\n' "$out"
+          printf '%s\n' "$out" | grep -q 'musl cross toolchain is slot-bundled' || {
+            echo "::error::musl slot-bundled note missing from output"; exit 1; }
+
+  # A bare ubuntu-latest runner (glibc 2.35+) is the misuse the guard exists
+  # to catch: the guard must FAIL and name the contract.
+  expected-fail-ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Guard rejects a newer-glibc environment with the contract message
+        env:
+          INPUTTARGETABI: Linux_x86_64
+          INPUTDISTSCRIPT: dist/Linux_x86_64.u
+        run: |
+          set +e
+          out=$(bash ./toolchain-conformance.sh 2>&1)
+          rc=$?
+          set -e
+          printf '%s\n' "$out"
+          [ "$rc" -ne 0 ] || { echo "::error::guard passed on ubuntu-latest; expected failure"; exit 1; }
+          printf '%s\n' "$out" | grep -q 'glibc <= 2.28' || { echo "::error::contract floor missing from message"; exit 1; }
+          printf '%s\n' "$out" | grep -q 'manylinux_2_28' || { echo "::error::canonical environment missing from message"; exit 1; }
+
+  pass-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Guard passes for Windows_x86_64
+        shell: bash
+        env:
+          INPUTTARGETABI: Windows_x86_64
+          INPUTDISTSCRIPT: dist/Windows_x86_64.u
+        run: |
+          out=$(bash ./toolchain-conformance.sh)
+          printf '%s\n' "$out"
+          printf '%s\n' "$out" | grep -q 'MSVC installation at' || {
+            echo "::error::MSVC conformance line missing from output"; exit 1; }
+
+  pass-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Guard passes for Darwin_arm64
+        env:
+          INPUTTARGETABI: Darwin_arm64
+          INPUTDISTSCRIPT: dist/Darwin_arm64.u
+        run: |
+          out=$(bash ./toolchain-conformance.sh)
+          printf '%s\n' "$out"
+          printf '%s\n' "$out" | grep -q 'Xcode Command Line Tools' || {
+            echo "::error::Xcode CLT conformance line missing from output"; exit 1; }
+
+  # Data-only distributions (dist/any.u, no ABI inputs) get an explicit
+  # notice and pass; they must never break.
+  no-abi-notice:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Guard notices and passes when no ABI is declared
+        env:
+          INPUTDISTSCRIPT: dist/any.u
+        run: |
+          out=$(bash ./toolchain-conformance.sh)
+          printf '%s\n' "$out"
+          printf '%s\n' "$out" | grep -q 'no ABI declared' || {
+            echo "::error::no-ABI notice missing from output"; exit 1; }
+
+  # The escape hatch passes on a non-conforming host but must warn loudly.
+  skip-hatch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Skip input warns and passes on a non-conforming host
+        env:
+          INPUTSKIP: 'true'
+          INPUTTARGETABI: Linux_x86_64
+          INPUTDISTSCRIPT: dist/Linux_x86_64.u
+        run: |
+          out=$(bash ./toolchain-conformance.sh)
+          printf '%s\n' "$out"
+          printf '%s\n' "$out" | grep -q 'does NOT imply a conforming build environment' || {
+            echo "::error::skip warning missing from output"; exit 1; }
+
+  # A Linux slot on a macOS runner is a workflow-matrix mistake: fail loud.
+  wrong-runner-family:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Guard rejects a Linux slot on a macOS runner
+        env:
+          INPUTTARGETABI: Linux_x86_64
+          INPUTDISTSCRIPT: dist/Linux_x86_64.u
+        run: |
+          set +e
+          out=$(bash ./toolchain-conformance.sh 2>&1)
+          rc=$?
+          set -e
+          printf '%s\n' "$out"
+          [ "$rc" -ne 0 ] || { echo "::error::guard passed for a Linux slot on macOS; expected failure"; exit 1; }
+          printf '%s\n' "$out" | grep -q 'must be distributed from a Linux build environment' || {
+            echo "::error::runner-family message missing"; exit 1; }
+
+  # End-to-end through the real composite action: proves the action.yml
+  # wiring (input plumbing, GITHUB_ACTION_PATH invocation, step ordering).
+  # Dummy keys pass "Check Key Pairs"; the explicit semver id is required
+  # because the dk-vars semver check runs before the guard. The guard fails
+  # before "Get dksrc", so no dk work or network access happens.
+  wiring-expected-fail:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run the action on a non-conforming environment
+        id: dist
+        continue-on-error: true
+        uses: ./
+        with:
+          id: Test_Pkg@0.1.0
+          pubkey: dummy
+          seckey: dummy
+          distscript: dist/Linux_x86_64.u
+          target-abi: Linux_x86_64
+      - name: Assert the guard failed the action
+        if: steps.dist.outcome != 'failure'
+        run: |
+          echo "::error::expected the conformance guard to fail the action on ubuntu-latest (outcome was '${{ steps.dist.outcome }}')"
+          exit 1

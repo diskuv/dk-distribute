@@ -150,6 +150,43 @@ Now, when you push a git tag, the GitHub Actions will create the following direc
 
 and build the dk values from your distribution script (`distscript`).
 
+## Build-environment conformance
+
+Before running your distribution script, the action verifies that the build
+environment conforms to the declared ABI's toolchain contract. The ABI comes
+from `target-abi`, else `execution-abi`, else the distscript basename when it
+names an ABI (ex. `dist/Windows_x86_64.u`). A non-conforming environment fails
+the job before any artifact exists.
+
+`attest-build-provenance` attests only the artifacts of successful jobs, and
+this guard runs before any artifact is produced. A published attestation
+therefore implies the build environment conformed to the ABI's toolchain
+contract: the conformance check is effectively part of the attestation.
+
+| ABI family | Checks | Canonical environment |
+| ---------- | ------ | --------------------- |
+| `Linux_*` (glibc) | host glibc ≤ 2.28 (glibc links are backward-compatible only, so a newer build glibc raises every consumer's runtime floor); `gcc` and `as` on PATH | `quay.io/pypa/manylinux_2_28_*` |
+| `Linux_*_musl` | the same host checks (the DkML host tools are glibc-linked); the musl cross toolchain is slot-bundled, so it has no host probe yet | `quay.io/pypa/manylinux_2_28_*` |
+| `Windows_*` | vswhere finds an MSVC installation in version range `[16.0,19.0)` with `Microsoft.VisualStudio.Component.VC.Tools.x86.x64` | `windows-latest` |
+| `Darwin_*` | Xcode Command Line Tools (`xcode-select -p` succeeds, `/usr/bin/clang` runs); the SDK version is logged informationally | `macos-latest` |
+
+The guard also fails when the resolved ABI family does not match the runner OS
+(ex. a `Linux_*` slot on a macOS runner), which is always a workflow-matrix
+mistake.
+
+A job that declares no ABI at all (ex. a data-only distribution built from
+`dist/any.u` on `ubuntu-latest`) logs an explicit "no conformance checks
+defined" notice and passes; the same applies to an ABI with no row in the
+table. There are no silent skips.
+
+For emergencies only, `skip-toolchain-conformance: 'true'` skips the guard. It
+emits a loud workflow warning, and it breaks the attestation implication for
+that release: the attestation no longer says anything about the build
+environment.
+
+To extend the guard for a new ABI family, add one row to the data table at the
+top of `toolchain-conformance.sh`; no new script is needed.
+
 ## Preparation
 
 The distribution keys and files will be prepared for you when you run the command `prepare-version --ci github MAJOR.MINOR`.
