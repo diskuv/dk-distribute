@@ -7,7 +7,7 @@
 name: Test toolchain conformance guard
 on:
   push:
-    branches: ['claude/**']
+    branches: ['conformance', 'claude/**']
   workflow_dispatch:
 
 jobs:
