@@ -739,8 +739,9 @@ runs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: patches
+          name: patches-${{ steps.dk-vars.outputs.dk_dist_part }}
           path: dk-patches/
+          if-no-files-found: ignore
 
       - name: Share distribution artifacts
         if: inputs.standalone != 'true'
