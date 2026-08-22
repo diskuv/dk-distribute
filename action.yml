@@ -739,8 +739,15 @@ runs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: patches
+          # Per-slot name so the matrix jobs do not collide (upload-artifact@v4+
+          # requires a unique name per run). Mirrors the logs-<part> and
+          # distribution-<part> steps above and below. Collect every slot's
+          # patch with download-artifact `pattern: patches-*`, `merge-multiple:
+          # true`.
+          name: patches-${{ steps.dk-vars.outputs.dk_dist_part }}
           path: dk-patches/
+          # Green slots leave dk-patches/ empty; do not warn or fail on that.
+          if-no-files-found: ignore
 
       - name: Share distribution artifacts
         if: inputs.standalone != 'true'
