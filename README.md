@@ -49,7 +49,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Distribute Modules
-        uses: diskuv/dk-distribute@v2
+        uses: diskuv/dk-distribute@v4
         with:
             pubkey: ${{ secrets.distribute_1_0_pubkey }} # change based on MAJOR.MINOR
             seckey: ${{ secrets.distribute_1_0_seckey }} # change based on MAJOR.MINOR
@@ -74,7 +74,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Combine Modules
-        uses: diskuv/dk-distribute/combine@v2
+        uses: diskuv/dk-distribute/combine@v4
         with:
             pubkey: ${{ secrets.distribute_1_0_pubkey }} # change based on MAJOR.MINOR
             seckey: ${{ secrets.distribute_1_0_seckey }} # change based on MAJOR.MINOR
@@ -82,7 +82,7 @@ jobs:
             experimental-mlfront-ref: ${{ github.ref_type != 'tag' && 'HEAD' }}
 
       - name: Attest and Release
-        uses: diskuv/dk-distribute/attest-release@v3
+        uses: diskuv/dk-distribute/attest-release@v4
 
 ```
 
@@ -220,7 +220,7 @@ The action removes `short-build-dir` before recreating it, so a leftover `C:\b\w
 
 ```yaml
 - name: Distribute Modules
-  uses: diskuv/dk-distribute@v2
+  uses: diskuv/dk-distribute@v4
   with:
     short-build-dir: ${{ runner.os == 'Windows' && 'C:\b' || '' }}
     distscript: ${{ matrix.distscript }}
@@ -244,7 +244,7 @@ no extra artifact wiring in your workflow.
 
 ```yaml
 - name: Distribute Modules
-  uses: diskuv/dk-distribute@v3
+  uses: diskuv/dk-distribute@v4
   with:
     distscript: ${{ matrix.distscript }}   # ex. dist/Windows_x86_64.u -> slot Release.Windows_x86_64
     publish-objects: |
@@ -267,7 +267,7 @@ However, the following will build the [reference build system](https://gitlab.co
 
 ```yaml
 - name: dk distribute
-  uses: diskuv/dk-distribute@v2
+  uses: diskuv/dk-distribute@v4
   with:
     experimental-mlfront-ref: HEAD
 ```
