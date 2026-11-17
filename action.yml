@@ -508,9 +508,9 @@ runs:
           echo "dksrc/${{ steps.dk-vars.outputs.dk_launcher }} --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD update"
           dksrc/${{ steps.dk-vars.outputs.dk_launcher }} --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD update
 
-          echo "dksrc/${{ steps.dk-vars.outputs.dk_launcher }} --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' --diff - --diff dk-patches/${{ steps.dk-vars.outputs.dk_dist_part }}.patch "${{ env.INPUTDISTSCRIPT }}""
+          echo "dksrc/${{ steps.dk-vars.outputs.dk_launcher }} --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute build ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' --diff - --diff dk-patches/${{ steps.dk-vars.outputs.dk_dist_part }}.patch "${{ env.INPUTDISTSCRIPT }}""
           install -d dk-patches
-          dksrc/${{ steps.dk-vars.outputs.dk_launcher }} --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' --diff - --diff dk-patches/${{ steps.dk-vars.outputs.dk_dist_part }}.patch ${{ env.INPUTDISTSCRIPT }}
+          dksrc/${{ steps.dk-vars.outputs.dk_launcher }} --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute build ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' --diff - --diff dk-patches/${{ steps.dk-vars.outputs.dk_dist_part }}.patch ${{ env.INPUTDISTSCRIPT }}
 
           # --keys-env DK_BUILD lets combine sign the combined distribution's
           # canonical build payload with the distribution key.
@@ -588,11 +588,11 @@ runs:
               throw "dk0 update failed with exit code $LASTEXITCODE"
             }
 
-            Write-Host "dksrc\${{ steps.dk-vars.outputs.dk_launcher }}.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' --diff - --diff dk-patches/${{ steps.dk-vars.outputs.dk_dist_part }}.patch ${{ env.INPUTDISTSCRIPT }}"
+            Write-Host "dksrc\${{ steps.dk-vars.outputs.dk_launcher }}.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute build ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' --diff - --diff dk-patches/${{ steps.dk-vars.outputs.dk_dist_part }}.patch ${{ env.INPUTDISTSCRIPT }}"
             if (-not (Test-Path dk-patches)) { New-Item -ItemType Directory -Path dk-patches | Out-Null }
-            dksrc\${{ steps.dk-vars.outputs.dk_launcher }}.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' --diff - --diff dk-patches/${{ steps.dk-vars.outputs.dk_dist_part }}.patch ${{ env.INPUTDISTSCRIPT }}
+            dksrc\${{ steps.dk-vars.outputs.dk_launcher }}.cmd --errors-plain ${{ env.INPUTOPTIONS }} --keys-env DK_BUILD --verbose distribute build ${{ steps.dk-vars.outputs.dk_dist_part }} --library '${{ steps.dk-vars.outputs.dk_id_library }}@${{ steps.dk-vars.outputs.dk_id_version }}' --diff - --diff dk-patches/${{ steps.dk-vars.outputs.dk_dist_part }}.patch ${{ env.INPUTDISTSCRIPT }}
             if ($LASTEXITCODE -ne 0) {
-              throw "dk0 distribute failed with exit code $LASTEXITCODE"
+              throw "dk0 distribute build failed with exit code $LASTEXITCODE"
             }
 
             # --keys-env DK_BUILD lets combine sign the combined distribution's
